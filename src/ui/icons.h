@@ -31,3 +31,15 @@
 #define ICON_TROPHY       "\xEF\x82\x91"  // F091
 #define ICON_FIRE         "\xEF\x81\xAD"  // F06D
 #define ICON_ROUTE        "\xEF\x93\x97"  // F4D7
+#define ICON_ARROW_UP       "\xEF\x81\xA2"  // F062
+#define ICON_ARROW_LEFT     "\xEF\x81\xA0"  // F060
+#define ICON_ARROW_RIGHT    "\xEF\x81\xA1"  // F061
+#define ICON_UTURN          "\xEF\x83\xA2"  // F0E2
+#define ICON_ROUNDABOUT     "\xEF\x8B\xB1"  // F2F1
+#define ICON_FLAG           "\xEF\x84\x9E"  // F11E
+#define ICON_NAV_ARROW      "\xEF\x84\xA4"  // F124
+#define ICON_MAP            "\xEF\x89\xB9"  // F279
+#define ICON_INPUT          "\xEF\x8B\xB6"  // F2F6
+#define ICON_NOTE           "\xEF\x89\x89"  // F249
+#define ICON_DIRECTIONS     "\xEF\x97\xAB"  // F5EB
+#define ICON_TRASH          "\xEF\x8B\xAD"  // F2ED

@@ -1,8 +1,13 @@
 #include "apps.h"
 
+#include "apps/ir_remote_app.h"
+#include "apps/media_app.h"
+#include "apps/messages_app.h"
+#include "apps/notes_app.h"
 #include "apps/placeholder_app.h"
 #include "apps/runner_app.h"
 #include "apps/tictactoe_app.h"
+#include "apps/untis_app.h"
 #include "apps/watchfaces.h"
 #include "ui/ui_core.h"
 
@@ -13,15 +18,15 @@ using theme::Tint;
 static TicTacToeApp s_ticTacToe;
 static RunnerApp    s_runner;
 
-static PlaceholderApp s_untis("Stundenplan", ICON_CALENDAR, Tint::Red);
-static PlaceholderApp s_spotify("Spotify", ICON_SPOTIFY, Tint::Spotify, true);
-static PlaceholderApp s_messages("Mitteilungen", ICON_CHAT, Tint::Blue);
+static UntisApp    s_untis;
+static MediaApp    s_spotify;
+static MessagesApp s_messages;
 
 static PlaceholderApp s_shortcut1("Kurzbefehl 1", ICON_BOLT, Tint::Purple);
-static PlaceholderApp s_notes("Notizen", ICON_PEN, Tint::Yellow, true);
+static NotesApp s_notes;
 static PlaceholderApp s_shortcut2("Kurzbefehl 2", ICON_BOLT, Tint::Pink);
 
-static PlaceholderApp s_irRemote("Fernbedienung", ICON_TV, Tint::Teal);
+static IrRemoteApp s_irRemote;
 static PlaceholderApp s_hack("Hack", ICON_TERMINAL, Tint::Gray);
 
 void registerAll() {

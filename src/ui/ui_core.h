@@ -39,5 +39,6 @@ lv_obj_t* tileview();
 // Sperrt das Wischen zwischen Kacheln (z.B. während ein Spiel läuft).
 // Wird beim Verlassen der Kachel / Aufwachen automatisch wieder aufgehoben.
 void setSwipeLocked(bool locked);
+bool isSwipeLocked();
 
 }  // namespace ui

@@ -21,6 +21,8 @@
 #include "hal/haptics.h"
 #include "hal/power.h"
 #include "hal/rtc_clock.h"
+#include "ui/banner.h"
+#include "ui/map_screen.h"
 #include "ui/theme.h"
 #include "ui/ui_core.h"
 
@@ -65,6 +67,8 @@ void setup() {
 
     apps::registerAll();
     ui::build();
+    banner::begin();
+    mapscreen::begin();
 
     BleManager& ble = BleManager::instance();
     ble.onMessage([](const String& msg) { store::handleMessage(msg); });

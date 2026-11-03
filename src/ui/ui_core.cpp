@@ -5,7 +5,9 @@
 #include <vector>
 
 #include "core/settings.h"
+#include "ui/map_screen.h"
 #include "ui/theme.h"
+#include "ui/widgets.h"
 
 namespace ui {
 
@@ -214,6 +216,9 @@ void showTile(uint8_t col, uint8_t row, bool animate) {
 void showWatchface(bool animate) { showTile(COL_WATCHFACES, s_lastFace, animate); }
 
 void onWake() {
+    // Wie bei watchOS: nach dem Aufwachen keine offenen Detailansichten mehr
+    ui::closeAllSheets();
+    mapscreen::close();
     if (isWatchface(s_current) && s_current->row == s_lastFace) {
         s_current->app->onShow();  // schon da -> nur Inhalte auffrischen
     } else {
@@ -222,6 +227,8 @@ void onWake() {
 }
 
 lv_obj_t* tileview() { return s_tv; }
+
+bool isSwipeLocked() { return s_tv && !lv_obj_has_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE); }
 
 void setSwipeLocked(bool locked) {
     if (!s_tv) return;

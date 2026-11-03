@@ -6,6 +6,7 @@
 #include "core/data_store.h"
 #include "hal/rtc_clock.h"
 #include "ui/theme.h"
+#include "ui/map_screen.h"
 #include "ui/ui_core.h"
 
 // -----------------------------------------------------------------------------
@@ -468,8 +469,12 @@ void InfoTile::create(lv_obj_t* tile) {
         row, [](lv_event_t* e) { static_cast<InfoTile*>(lv_event_get_user_data(e))->openBatteryModal(); },
         LV_EVENT_CLICKED, this);
 
-    // --- Standort (Titel + Koordinaten darunter) ---
-    c = listRow(list, ICON_LOCATION, theme::tint(theme::Tint::Blue), false);
+    // --- Standort (Titel + Ort/Koordinaten darunter, antippen = Karte) ---
+    c = listRow(list, ICON_LOCATION, theme::tint(theme::Tint::Blue), false, &row);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_style(row, theme::cardPressed(), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_add_event_cb(row, [](lv_event_t*) { mapscreen::open(); }, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* stack = box(c);
     lv_obj_set_flex_grow(stack, 1);
     lv_obj_set_height(stack, LV_SIZE_CONTENT);
@@ -478,6 +483,7 @@ void InfoTile::create(lv_obj_t* tile) {
     m_location = theme::label(stack, theme::textCaption(), "Keine Daten");
     lv_label_set_long_mode(m_location, LV_LABEL_LONG_DOT);
     lv_obj_set_width(m_location, LV_PCT(100));
+    theme::label(c, theme::textCaption(), ICON_CHEVRON);
 
     // --- Handy-Verbindung ---
     c = listRow(list, LV_SYMBOL_BLUETOOTH, theme::tint(theme::Tint::Blue), false);
@@ -497,6 +503,7 @@ void InfoTile::create(lv_obj_t* tile) {
 
     store::subscribe(Topic::Battery,    [this] { refresh(); });
     store::subscribe(Topic::Location,   [this] { refresh(); });
+    store::subscribe(Topic::Nav,        [this] { refresh(); });
     store::subscribe(Topic::Connection, [this] { refresh(); });
     refresh();
 }
@@ -509,7 +516,10 @@ void InfoTile::refresh() {
     formatPercent(buf, sizeof(buf), d.watchBattery);
     setText(m_batteryValue, buf);
 
-    setText(m_location, d.location.length() ? d.location.c_str() : "Keine Daten");
+    if (d.nav.active)           setText(m_location, "Navigation aktiv");
+    else if (d.place.length())  setText(m_location, d.place.c_str());
+    else if (d.location.length()) setText(m_location, d.location.c_str());
+    else                        setText(m_location, "Karte öffnen");
     setText(m_bleStatus, d.bleConnected ? "Verbunden" : "Getrennt");
 
     if (m_modal) refreshModal();
@@ -593,7 +603,7 @@ void InfoTile::refreshModal() {
         setText(m_rows[i].value, buf);
         int v = values[i] < 0 ? 0 : values[i];
         lv_bar_set_value(m_rows[i].bar, v, LV_ANIM_OFF);
-        bool charging = i == 0 && d.watchCharging;
+        bool charging = (i == 0 && d.watchCharging) || (i == 1 && d.phoneCharging);
         lv_obj_set_style_bg_color(m_rows[i].bar, (v <= 20 && !charging) ? p.red : p.green, LV_PART_INDICATOR);
     }
 }

@@ -94,7 +94,7 @@ void BleManager::loop() {
 
     if (m_syncRequested) {
         m_syncRequested = false;
-        send("SYNC", "all");  // Tasker antwortet mit TIME, BAT, SPOTIFY, UNTIS, NOTES ...
+        send("SYNC", "all");  // WatchBridge antwortet mit TIME, BAT, MEDIA, UNTIS, NOTES ...
     }
 
     // Queue unter Lock leeren, Handler ohne Lock aufrufen

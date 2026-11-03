@@ -51,7 +51,7 @@ private:
     BleManager() = default;
 
     static constexpr size_t MAX_MESSAGE_LEN = 8192;
-    static constexpr size_t MAX_QUEUE       = 16;
+    static constexpr size_t MAX_QUEUE       = 64;  // Kartenbild = ~12 Nachrichten am Stück
 
     NimBLECharacteristic* m_tx = nullptr;
 
