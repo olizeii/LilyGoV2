@@ -7,19 +7,20 @@
 namespace apps {
 
 // --- Platzhalter (werden Schritt für Schritt durch echte Apps ersetzt) -------
-static PlaceholderApp s_ticTacToe("Tic Tac Toe", LV_SYMBOL_SHUFFLE);
-static PlaceholderApp s_runner("Runner", LV_SYMBOL_PLAY);
+using theme::Tint;
+static PlaceholderApp s_ticTacToe("Tic Tac Toe", ICON_HASHTAG, Tint::Indigo);
+static PlaceholderApp s_runner("Runner", ICON_RUNNING, Tint::Green);
 
-static PlaceholderApp s_untis("Stundenplan", LV_SYMBOL_LIST);
-static PlaceholderApp s_spotify("Spotify", LV_SYMBOL_AUDIO);
-static PlaceholderApp s_messages("Nachrichten", LV_SYMBOL_ENVELOPE);
+static PlaceholderApp s_untis("Stundenplan", ICON_CALENDAR, Tint::Red);
+static PlaceholderApp s_spotify("Spotify", ICON_SPOTIFY, Tint::Spotify, true);
+static PlaceholderApp s_messages("Mitteilungen", ICON_CHAT, Tint::Blue);
 
-static PlaceholderApp s_shortcut1("Shortcut 1", LV_SYMBOL_UPLOAD);
-static PlaceholderApp s_notes("Notizen", LV_SYMBOL_EDIT);
-static PlaceholderApp s_shortcut2("Shortcut 2", LV_SYMBOL_UPLOAD);
+static PlaceholderApp s_shortcut1("Kurzbefehl 1", ICON_BOLT, Tint::Purple);
+static PlaceholderApp s_notes("Notizen", ICON_PEN, Tint::Yellow, true);
+static PlaceholderApp s_shortcut2("Kurzbefehl 2", ICON_BOLT, Tint::Pink);
 
-static PlaceholderApp s_irRemote("IR-Remote", LV_SYMBOL_POWER);
-static PlaceholderApp s_hack("Hack", LV_SYMBOL_WIFI);
+static PlaceholderApp s_irRemote("Fernbedienung", ICON_TV, Tint::Teal);
+static PlaceholderApp s_hack("Hack", ICON_TERMINAL, Tint::Gray);
 
 void registerAll() {
     // X=0  Games

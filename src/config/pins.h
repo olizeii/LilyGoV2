@@ -21,8 +21,12 @@
 #define PIN_TOUCH_SCL     40
 #define PIN_TOUCH_INT     16
 #define TOUCH_I2C_ADDR    0x38
-// Falls Touch gespiegelt ist: 0..7 durchprobieren (LovyanGFX offset_rotation).
-#define TOUCH_OFFSET_ROTATION 0
+// Der FT6336 liefert Koordinaten bereits in der Ausrichtung von TFT_ROTATION 2.
+// LovyanGFX dreht den Touch aber zusätzlich mit der Display-Rotation mit ->
+// ohne Ausgleich wäre jede Geste in X und Y gespiegelt. Offset 2 hebt das auf:
+// ((2 + 2) & 3) = 0. Bei TFT_ROTATION 0 hier ebenfalls 0 eintragen.
+// (Werte 4..7 = zusätzlich gespiegelt, siehe Panel_Device::convertRawXY)
+#define TOUCH_OFFSET_ROTATION 2
 
 // --- Sensor-I2C-Bus (PMU, RTC, BMA423, DRV2605) ------------------------------
 #define PIN_I2C_SDA       10

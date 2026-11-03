@@ -6,14 +6,28 @@ Firmware für die LilyGo T-Watch-S3 (ESP32-S3) mit LVGL 8.3, einem 2D-Raster (`l
 
 ```
         X=0          X=1 (Start)    X=2           X=3          X=4
-Y=0     Tic Tac Toe  Digital        Untis         Shortcut 1   IR-Remote
+Y=0     Tic Tac Toe  Digital        Stundenplan   Kurzbefehl 1 Fernbedienung
 Y=1     Runner       Analog         Spotify       Notizen      Hack
-Y=2                  Modern         Nachrichten   Shortcut 2
+Y=2                  Modern         Mitteilungen  Kurzbefehl 2
 Y=3                  Info (Akku)
 ```
 
 * Wischrichtungen werden automatisch aus den Nachbarn im Raster berechnet.
+* Nach jedem Wechsel blenden Seitenpunkte (watchOS-Stil) kurz die Position ein: unten die Spalte, rechts die Reihe.
 * Die zuletzt betrachtete Watchface-Reihe (Y=0..2) wird im NVS gespeichert. Beim Booten, beim Aufwachen und beim Zurückwischen aus einer anderen Spalte springt die Uhr dorthin.
+
+## Design
+
+Angelehnt an watchOS/iOS (Apple Human Interface Guidelines):
+
+* **Schrift:** Inter (SF-Pro-ähnlich, mit Umlauten) statt Montserrat. Stufen: Caption 15 · Body 18 · Headline 18 semibold · Title 24 · Large 34 · Time 76 · TimeXL 88.
+* **Farben:** Apple-Systemfarben, Dark Mode mit reinem Schwarz (OLED-Look), Light Mode im iOS-Grouped-Stil (`#F2F2F7` + weiße Karten). Sekundärtext erreicht mindestens 4,5:1 Kontrast, im Light Mode wird das „accessible orange“ `#C93400` verwendet.
+* **Komponenten:** App-Icons als farbige Kreise, die Info-Kachel als gruppierte Liste mit eingerückten Trennlinien, Toggles in Grün, Touch-Ziele ≥ 44 px.
+* Fonts neu erzeugen: `tools/gen_fonts.sh <inter-ttf-ordner>` (benötigt `lv_font_conv`). Neue Icons: Codepoint in `EXTRA` eintragen und in `src/ui/icons.h` definieren.
+
+## Touch-Ausrichtung
+
+Das Display läuft mit `TFT_ROTATION 2`. LovyanGFX dreht den Touch mit, der FT6336 liefert aber bereits passende Koordinaten. Deshalb gleicht `TOUCH_OFFSET_ROTATION 2` die Drehung aus, sonst wären Wischen und Tippen in beiden Achsen gespiegelt (siehe `src/config/pins.h`).
 
 ## Projektstruktur
 
@@ -28,9 +42,11 @@ src/
   hal/rtc_clock.cpp/h      PCF8563 <-> Systemzeit (UTC in der RTC, TZ Europe/Berlin)
   core/settings.cpp/h      Preferences/NVS (schreibt nur bei Änderung)
   core/data_store.cpp/h    Daten vom Handy + Pub/Sub + Protokoll-Parser
-  ui/theme.cpp/h           Apple-Palette, geteilte Styles, Light/Dark
+  ui/theme.cpp/h           Apple-Palette, Systemfarben, Styles, Icon-Helfer, Light/Dark
+  ui/icons.h               Zusätzliche FontAwesome-Icons (UTF-8)
+  ui/fonts/                Generierte Inter-Fonts (tools/gen_fonts.sh)
   ui/app.h                 WatchApp-Basisklasse (create/onShow/onHide/onTick)
-  ui/ui_core.cpp/h         Tileview, Registrierung, Watchface-Gedächtnis
+  ui/ui_core.cpp/h         Tileview, Registrierung, Watchface-Gedächtnis, Seitenpunkte
   apps/apps.cpp            ZENTRALE Registry: welche App liegt auf welcher Kachel
   apps/watchfaces.cpp/h    Spalte X=1: Digital, Analog, Modern, Info + Akku-Overlay
   apps/placeholder_app.*   Platzhalter für noch fehlende Apps
