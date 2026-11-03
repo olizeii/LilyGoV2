@@ -10,7 +10,8 @@
 //  Y=0 TicTac   Digital       Untis      Widget 1   IR-Remote
 //  Y=1 Runner   Analog        Spotify    Notizen    Hack
 //  Y=2          Modern        Nachr.     Widget 2
-//  Y=3          Info
+//  Y=3          Aktivität
+//  Y=4          Info
 //
 //  Wischrichtungen werden automatisch aus den Nachbarn im Raster berechnet.
 // =============================================================================
@@ -34,5 +35,9 @@ void showWatchface(bool animate = false);  // zuletzt aktives Watchface (NVS)
 void onWake();  // Display wieder an -> immer zurück aufs Watchface
 
 lv_obj_t* tileview();
+
+// Sperrt das Wischen zwischen Kacheln (z.B. während ein Spiel läuft).
+// Wird beim Verlassen der Kachel / Aufwachen automatisch wieder aufgehoben.
+void setSwipeLocked(bool locked);
 
 }  // namespace ui

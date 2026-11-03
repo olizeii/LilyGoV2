@@ -116,6 +116,7 @@ static void showIndicator(const Entry* e) {
 static void activate(Entry* next, bool indicate) {
     if (!next || next == s_current) return;
     if (s_current) s_current->app->onHide();
+    setSwipeLocked(false);  // Sperre gilt nur für die Kachel, die sie gesetzt hat
     s_current = next;
 
     if (isWatchface(next) && next->row != s_lastFace) {
@@ -221,5 +222,11 @@ void onWake() {
 }
 
 lv_obj_t* tileview() { return s_tv; }
+
+void setSwipeLocked(bool locked) {
+    if (!s_tv) return;
+    if (locked) lv_obj_clear_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
+    else        lv_obj_add_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
+}
 
 }  // namespace ui

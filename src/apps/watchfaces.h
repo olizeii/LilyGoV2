@@ -5,10 +5,11 @@
 
 // =============================================================================
 //  Spalte X=1 – Watchfaces (Start-Spalte)
-//    Y=0 DigitalFace   Y=1 AnalogFace   Y=2 ModernFace   Y=3 InfoTile
+//    Y=0 DigitalFace   Y=1 AnalogFace   Y=2 ModernFace
+//    Y=3 ActivityTile  Y=4 InfoTile
 //
 //  Neues Watchface: Klasse von WatchApp ableiten, in registerColumn() eintragen
-//  und ui::WATCHFACE_COUNT erhöhen (Info-Kachel rutscht eine Reihe nach unten).
+//  und ui::WATCHFACE_COUNT erhöhen (Aktivität + Info rutschen eine Reihe nach unten).
 // =============================================================================
 namespace watchfaces {
 
@@ -29,6 +30,7 @@ private:
     lv_obj_t* m_time     = nullptr;
     lv_obj_t* m_status   = nullptr;  // Flex-Zeile
     lv_obj_t* m_ble      = nullptr;
+    lv_obj_t* m_steps    = nullptr;
     lv_obj_t* m_batIcon  = nullptr;
     lv_obj_t* m_batValue = nullptr;
 };
@@ -57,6 +59,7 @@ private:
     lv_point_t m_secPts[2];
     lv_obj_t* m_weekday = nullptr;
     lv_obj_t* m_day     = nullptr;
+    lv_obj_t* m_steps   = nullptr;
 };
 
 // --- Y=2  Modern: gestapelte Ziffern, Sekundenring ---------------------------
@@ -75,7 +78,25 @@ private:
     lv_obj_t* m_date    = nullptr;
 };
 
-// --- Y=3  Info: gruppierte Liste (Akku, Standort, Handy, Dunkelmodus) --------
+// --- Y=3  Aktivität: Schritte-Ring (Ziel), Strecke, Energie ----------------
+class ActivityTile : public WatchApp {
+public:
+    const char* name() const override { return "Aktivität"; }
+    void create(lv_obj_t* tile) override;
+    void onShow() override { refresh(); }
+
+private:
+    void refresh();
+    void applyColors();
+
+    lv_obj_t* m_ring  = nullptr;
+    lv_obj_t* m_steps = nullptr;
+    lv_obj_t* m_goal  = nullptr;
+    lv_obj_t* m_dist  = nullptr;
+    lv_obj_t* m_kcal  = nullptr;
+};
+
+// --- Y=4  Info: gruppierte Liste (Akku, Standort, Handy, Dunkelmodus) --------
 class InfoTile : public WatchApp {
 public:
     const char* name() const override { return "Info"; }

@@ -4,7 +4,7 @@
 //  Boot-Reihenfolge:
 //    1. PMU (Strom für Backlight + Touch)   4. Theme + Apps + Tileview
 //    2. RTC -> Systemzeit                    5. BLE-Server (Tasker-Bridge)
-//    3. Display/Touch + LVGL
+//    3. Display/Touch + LVGL                 (+ Vibration, Schrittzähler)
 //
 //  Threading: Alles LVGL-bezogene läuft NUR in loop(). BLE-Daten kommen über die
 //  Queue im BleManager und werden in loop() an den DataStore verteilt.
@@ -14,9 +14,11 @@
 
 #include "apps/apps.h"
 #include "ble_manager.h"
+#include "core/activity.h"
 #include "core/data_store.h"
 #include "core/settings.h"
 #include "hal/display.h"
+#include "hal/haptics.h"
 #include "hal/power.h"
 #include "hal/rtc_clock.h"
 #include "ui/theme.h"
@@ -58,6 +60,8 @@ void setup() {
 
     store::begin();
     pollWatchBattery();
+    haptics::begin();
+    activity::begin();
 
     apps::registerAll();
     ui::build();
@@ -86,6 +90,7 @@ void loop() {
     }
 
     pollWatchBattery();
+    activity::loop();  // läuft auch bei Display aus weiter
     ui::loop(!display::isAsleep());
     lv_timer_handler();
 

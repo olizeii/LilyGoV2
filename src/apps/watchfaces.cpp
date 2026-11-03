@@ -2,6 +2,7 @@
 
 #include <math.h>
 
+#include "core/activity.h"
 #include "core/data_store.h"
 #include "hal/rtc_clock.h"
 #include "ui/theme.h"
@@ -57,6 +58,17 @@ void formatPercent(char* buf, size_t len, int pct) {
     else         snprintf(buf, len, "%d" NNBSP "%%", pct);
 }
 
+// 12345 -> "12.345" (deutsches Tausendertrennzeichen)
+void formatThousands(char* buf, size_t len, uint32_t v) {
+    if (v >= 1000000) snprintf(buf, len, "%lu.%03lu.%03lu", (unsigned long)(v / 1000000),
+                               (unsigned long)(v / 1000 % 1000), (unsigned long)(v % 1000));
+    else if (v >= 1000) snprintf(buf, len, "%lu.%03lu", (unsigned long)(v / 1000), (unsigned long)(v % 1000));
+    else snprintf(buf, len, "%lu", (unsigned long)v);
+}
+
+// Farbe der Bewegung (Apple-Aktivitätsring)
+lv_color_t moveColor() { return theme::tint(theme::Tint::Pink); }
+
 // Unsichtbarer Layout-Container (keine Klicks, kein Scrollen)
 lv_obj_t* box(lv_obj_t* parent) {
     lv_obj_t* b = lv_obj_create(parent);
@@ -75,13 +87,15 @@ namespace watchfaces {
 static DigitalFace s_digital;
 static AnalogFace  s_analog;
 static ModernFace  s_modern;
+static ActivityTile s_activity;
 static InfoTile    s_info;
 
 void registerColumn(uint8_t col) {
     ui::registerApp(col, 0, &s_digital);
     ui::registerApp(col, 1, &s_analog);
     ui::registerApp(col, 2, &s_modern);
-    ui::registerApp(col, ui::WATCHFACE_COUNT, &s_info);
+    ui::registerApp(col, ui::WATCHFACE_COUNT, &s_activity);
+    ui::registerApp(col, ui::WATCHFACE_COUNT + 1, &s_info);
 }
 
 }  // namespace watchfaces
@@ -91,7 +105,7 @@ void registerColumn(uint8_t col) {
 //
 //          Dienstag, 3. Nov.        <- Headline, Orange
 //            22:53                  <- 76 px Display-Schnitt
-//         (BT)  [bat] 82 %          <- Caption, sekundär
+//      (BT) [geh] 4.213  [bat] 82 % <- Caption, sekundär
 // =============================================================================
 void DigitalFace::create(lv_obj_t* tile) {
     m_date = theme::label(tile, theme::textHeadline());
@@ -109,7 +123,15 @@ void DigitalFace::create(lv_obj_t* tile) {
 
     m_ble = theme::label(m_status, theme::textCaption(), LV_SYMBOL_BLUETOOTH);
     lv_obj_add_style(m_ble, theme::textAccent(), 0);
-    lv_obj_set_style_pad_right(m_ble, 6, 0);
+    lv_obj_set_style_pad_right(m_ble, 4, 0);
+    lv_obj_t* walk = theme::label(m_status, theme::textCaption(), ICON_WALKING);
+    lv_obj_set_style_text_color(walk, moveColor(), 0);
+    m_steps = theme::label(m_status, theme::textCaption(), "0");
+    lv_obj_set_style_pad_right(m_steps, 10, 0);
+    if (!activity::available()) {
+        lv_obj_add_flag(walk, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(m_steps, LV_OBJ_FLAG_HIDDEN);
+    }
     m_batIcon  = theme::label(m_status, theme::textCaption(), LV_SYMBOL_BATTERY_FULL);
     m_batValue = theme::label(m_status, theme::textCaption(), DASH);
 }
@@ -137,6 +159,8 @@ void DigitalFace::onTick() {
     lv_obj_set_style_text_color(m_batIcon, batteryColor(d.watchBattery, d.watchCharging), 0);
     formatPercent(buf, sizeof(buf), d.watchBattery);
     setText(m_batValue, buf);
+    formatThousands(buf, sizeof(buf), activity::steps());
+    setText(m_steps, buf);
 }
 
 // =============================================================================
@@ -178,6 +202,10 @@ void AnalogFace::create(lv_obj_t* tile) {
     m_day = theme::label(date, theme::textHeadline(), "");
     lv_obj_add_style(m_day, theme::textAccentAlt(), 0);
     lv_obj_align(date, LV_ALIGN_CENTER, 58, 0);
+
+    // Schritte bei 6 Uhr
+    m_steps = theme::label(tile, theme::textCaption(), "");
+    if (!activity::available()) lv_obj_add_flag(m_steps, LV_OBJ_FLAG_HIDDEN);
 
     m_hour.stem  = makeLine(tile, theme::lineText(), 3);
     m_hour.blade = makeLine(tile, theme::lineText(), 8);
@@ -225,6 +253,12 @@ void AnalogFace::onTick() {
     setText(m_weekday, WEEKDAY_UPPER[t.tm_wday]);
     snprintf(buf, sizeof(buf), "%d", t.tm_mday);
     setText(m_day, buf);
+
+    char steps[16], line[32];
+    formatThousands(steps, sizeof(steps), activity::steps());
+    snprintf(line, sizeof(line), ICON_WALKING " %s", steps);
+    setText(m_steps, line);
+    lv_obj_align(m_steps, LV_ALIGN_CENTER, 0, 54);
 }
 
 // =============================================================================
@@ -275,7 +309,87 @@ void ModernFace::onTick() {
 }
 
 // =============================================================================
-//  Y=3  InfoTile – gruppierte Liste wie in den iOS-Einstellungen
+//  Y=3  ActivityTile – Ring wie Apples Bewegungsring, darunter Strecke/Energie
+// =============================================================================
+void ActivityTile::create(lv_obj_t* tile) {
+    m_ring = lv_arc_create(tile);
+    lv_obj_set_size(m_ring, 152, 152);
+    lv_obj_align(m_ring, LV_ALIGN_TOP_MID, 0, 14);
+    lv_obj_remove_style(m_ring, nullptr, LV_PART_KNOB);
+    lv_obj_clear_flag(m_ring, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_arc_width(m_ring, 16, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(m_ring, 16, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(m_ring, true, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(m_ring, true, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(m_ring, moveColor(), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(m_ring, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(m_ring, 0, 0);
+    lv_arc_set_rotation(m_ring, 270);
+    lv_arc_set_bg_angles(m_ring, 0, 360);
+    lv_arc_set_range(m_ring, 0, 1000);  // Promille vom Ziel
+
+    lv_obj_t* walk = theme::label(m_ring, theme::textHeadline(), ICON_WALKING);
+    lv_obj_set_style_text_color(walk, moveColor(), 0);
+    lv_obj_align(walk, LV_ALIGN_CENTER, 0, -34);
+    m_steps = theme::label(m_ring, theme::textLarge(), "0");
+    lv_obj_align(m_steps, LV_ALIGN_CENTER, 0, -2);
+    m_goal = theme::label(m_ring, theme::textCaption(), "");
+    lv_obj_align(m_goal, LV_ALIGN_CENTER, 0, 28);
+
+    // Strecke | Energie
+    lv_obj_t* stats = box(tile);
+    lv_obj_set_size(stats, 200, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(stats, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(stats, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_align(stats, LV_ALIGN_BOTTOM_MID, 0, -14);
+
+    auto stat = [&](const char* caption, lv_obj_t** valueOut) {
+        lv_obj_t* col = box(stats);
+        lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        *valueOut = theme::label(col, theme::textHeadline(), DASH);
+        theme::label(col, theme::textCaption(), caption);
+    };
+    stat("Strecke", &m_dist);
+    stat("Energie", &m_kcal);
+
+    if (!activity::available()) setText(m_goal, "Kein Sensor");
+
+    applyColors();
+    theme::onChange([this] { applyColors(); });
+    store::subscribe(Topic::Activity, [this] { refresh(); });
+    refresh();
+}
+
+void ActivityTile::applyColors() {
+    // Spur = gedämpfte Ringfarbe wie bei Apple
+    lv_obj_set_style_arc_color(m_ring, lv_color_mix(moveColor(), theme::colors().bg, LV_OPA_20), LV_PART_MAIN);
+}
+
+void ActivityTile::refresh() {
+    char buf[32], num[16];
+    uint32_t steps = activity::steps();
+    uint32_t goal  = activity::goal();
+
+    formatThousands(num, sizeof(num), steps);
+    setText(m_steps, num);
+    if (activity::available()) {
+        formatThousands(num, sizeof(num), goal);
+        snprintf(buf, sizeof(buf), "von %s", num);
+        setText(m_goal, buf);
+    }
+    lv_arc_set_value(m_ring, goal ? int(min<uint32_t>(steps * 1000 / goal, 1000)) : 0);
+
+    uint32_t m = activity::distanceM();
+    snprintf(buf, sizeof(buf), "%lu,%lu" NNBSP "km", (unsigned long)(m / 1000), (unsigned long)(m % 1000 / 100));
+    setText(m_dist, buf);
+    snprintf(buf, sizeof(buf), "%lu" NNBSP "kcal", (unsigned long)activity::kcal());
+    setText(m_kcal, buf);
+}
+
+// =============================================================================
+//  Y=4  InfoTile – gruppierte Liste wie in den iOS-Einstellungen
 //
 //   ┌──────────────────────────────┐
 //   │ [■] Akku            82 %  ›  │

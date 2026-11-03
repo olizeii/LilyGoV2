@@ -22,6 +22,8 @@ void    setBrightness(uint8_t level);
 // --- Generischer Zugriff für Apps (Key max. 15 Zeichen!) ---
 uint8_t getU8(const char* key, uint8_t def);
 void    putU8(const char* key, uint8_t value);
+uint32_t getU32(const char* key, uint32_t def);
+void     putU32(const char* key, uint32_t value);
 String  getString(const char* key, const String& def = "");
 void    putString(const char* key, const String& value);
 

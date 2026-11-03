@@ -39,19 +39,10 @@ static std::vector<String> split(const String& s, char sep, size_t maxParts) {
 
 static int clampPercent(const String& s) { return constrain(s.toInt(), 0, 100); }
 
-// Die eingebauten LVGL-Fonts haben nur ASCII. Bis ein eigener Latin-1-Font
-// eingebunden ist, werden Umlaute umschrieben statt als Lücke angezeigt.
-static void transliterate(String& s) {
-    static const char* const MAP[][2] = {{"ä", "ae"}, {"ö", "oe"}, {"ü", "ue"}, {"Ä", "Ae"},
-                                         {"Ö", "Oe"}, {"Ü", "Ue"}, {"ß", "ss"}, {"€", "EUR"}};
-    for (auto& m : MAP) s.replace(m[0], m[1]);
-}
-
 void handleMessage(const String& msg) {
     int sep = msg.indexOf('|');
     String topic   = (sep < 0 ? msg : msg.substring(0, sep));
     String payload = (sep < 0 ? "" : msg.substring(sep + 1));
-    transliterate(payload);
     topic.trim();
     topic.toUpperCase();
 

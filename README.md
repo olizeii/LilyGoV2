@@ -9,12 +9,28 @@ Firmware für die LilyGo T-Watch-S3 (ESP32-S3) mit LVGL 8.3, einem 2D-Raster (`l
 Y=0     Tic Tac Toe  Digital        Stundenplan   Kurzbefehl 1 Fernbedienung
 Y=1     Runner       Analog         Spotify       Notizen      Hack
 Y=2                  Modern         Mitteilungen  Kurzbefehl 2
-Y=3                  Info (Akku)
+Y=3                  Aktivität
+Y=4                  Info (Akku)
 ```
 
 * Wischrichtungen werden automatisch aus den Nachbarn im Raster berechnet.
 * Nach jedem Wechsel blenden Seitenpunkte (watchOS-Stil) kurz die Position ein: unten die Spalte, rechts die Reihe.
 * Die zuletzt betrachtete Watchface-Reihe (Y=0..2) wird im NVS gespeichert. Beim Booten, beim Aufwachen und beim Zurückwischen aus einer anderen Spalte springt die Uhr dorthin.
+
+## Funktionen
+
+### Tic Tac Toe (X=0, Y=0)
+Du (✕, blau) spielst gegen die Uhr (◯, orange). Die KI rechnet per Minimax, macht aber zu 25 % einen Zufallszug und ist damit schlagbar. Wer anfängt, wechselt jede Runde. Die Gewinnlinie wird farbig hervorgehoben, dazu gibt es Vibrationsfeedback. Tippen startet die nächste Runde.
+
+### Runner (X=0, Y=1)
+Ein Endlos-Laufspiel: Tippen lässt die Figur springen, damit sie den Säulen ausweicht. Das Tempo steigt mit den Punkten, ab 150 Punkten kommen Doppelsäulen. Alle 100 Punkte gibt es einen kurzen Vibrationsimpuls. Der Rekord (🏆) wird im NVS gespeichert. Während des Laufens ist das Wischen gesperrt. Schaltet sich das Display aus oder verlässt du die Kachel, wird das Spiel beendet.
+
+### Schritte / Aktivität (X=1, Y=3 + Watchfaces)
+Die Schritte zählt der **BMA423** selbst in Hardware weiter, auch wenn das Display aus ist.
+* Die Kachel *Aktivität* zeigt einen Ring wie Apples Bewegungsring (Ziel 10.000), dazu Strecke (Schrittlänge 0,75 m) und Energie (≈ 0,04 kcal/Schritt).
+* Digital-Face (Statuszeile) und Analog-Face (bei 6 Uhr) zeigen die Schritte als Komplikation.
+* Um Mitternacht beginnt ein neuer Tag. Der Tagesstand wird alle 5 min gesichert, ein Neustart verliert also höchstens wenige Minuten.
+* Beim Erreichen des Tagesziels vibriert die Uhr (DRV2605).
 
 ## Design
 
@@ -24,6 +40,10 @@ Angelehnt an watchOS/iOS (Apple Human Interface Guidelines):
 * **Farben:** Apple-Systemfarben, Dark Mode mit reinem Schwarz (OLED-Look), Light Mode im iOS-Grouped-Stil (`#F2F2F7` + weiße Karten). Sekundärtext erreicht mindestens 4,5:1 Kontrast, im Light Mode wird das „accessible orange“ `#C93400` verwendet.
 * **Komponenten:** App-Icons als farbige Kreise, die Info-Kachel als gruppierte Liste mit eingerückten Trennlinien, Toggles in Grün, Touch-Ziele ≥ 44 px.
 * Fonts neu erzeugen: `tools/gen_fonts.sh <inter-ttf-ordner>` (benötigt `lv_font_conv`). Neue Icons: Codepoint in `EXTRA` eintragen und in `src/ui/icons.h` definieren.
+
+## Hochladen
+
+`pio run -t upload --upload-port COM9`. Für den nativen USB-Port der Watch sind in `platformio.ini` zwei Einstellungen nötig: `board_upload.before_reset = usb_reset` und `upload_flags = --no-stub`. Ohne sie bricht der Upload mit „No serial data received“ bzw. „Unable to verify flash chip connection“ ab.
 
 ## Touch-Ausrichtung
 
@@ -40,15 +60,20 @@ src/
   hal/display.cpp/h        LovyanGFX (ST7789 + FT6336) -> LVGL, Backlight, Sleep
   hal/power.cpp/h          AXP2101: Rails, Akku, Seitentaste
   hal/rtc_clock.cpp/h      PCF8563 <-> Systemzeit (UTC in der RTC, TZ Europe/Berlin)
+  hal/motion.cpp/h         BMA423 Beschleunigungssensor + Hardware-Schrittzähler
+  hal/haptics.cpp/h        DRV2605 Vibration (tap / success / failure)
   core/settings.cpp/h      Preferences/NVS (schreibt nur bei Änderung)
   core/data_store.cpp/h    Daten vom Handy + Pub/Sub + Protokoll-Parser
+  core/activity.cpp/h      Tages-Schritte, Mitternachts-Reset, NVS-Sicherung, Ziel
   ui/theme.cpp/h           Apple-Palette, Systemfarben, Styles, Icon-Helfer, Light/Dark
   ui/icons.h               Zusätzliche FontAwesome-Icons (UTF-8)
   ui/fonts/                Generierte Inter-Fonts (tools/gen_fonts.sh)
   ui/app.h                 WatchApp-Basisklasse (create/onShow/onHide/onTick)
   ui/ui_core.cpp/h         Tileview, Registrierung, Watchface-Gedächtnis, Seitenpunkte
   apps/apps.cpp            ZENTRALE Registry: welche App liegt auf welcher Kachel
-  apps/watchfaces.cpp/h    Spalte X=1: Digital, Analog, Modern, Info + Akku-Overlay
+  apps/watchfaces.cpp/h    Spalte X=1: Digital, Analog, Modern, Aktivität, Info + Akku-Overlay
+  apps/tictactoe_app.*     Tic Tac Toe gegen Minimax-KI
+  apps/runner_app.*        Endlos-Runner (50 fps, Rekord im NVS)
   apps/placeholder_app.*   Platzhalter für noch fehlende Apps
 ```
 

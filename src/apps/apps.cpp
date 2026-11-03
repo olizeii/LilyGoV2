@@ -1,6 +1,8 @@
 #include "apps.h"
 
 #include "apps/placeholder_app.h"
+#include "apps/runner_app.h"
+#include "apps/tictactoe_app.h"
 #include "apps/watchfaces.h"
 #include "ui/ui_core.h"
 
@@ -8,8 +10,8 @@ namespace apps {
 
 // --- Platzhalter (werden Schritt für Schritt durch echte Apps ersetzt) -------
 using theme::Tint;
-static PlaceholderApp s_ticTacToe("Tic Tac Toe", ICON_HASHTAG, Tint::Indigo);
-static PlaceholderApp s_runner("Runner", ICON_RUNNING, Tint::Green);
+static TicTacToeApp s_ticTacToe;
+static RunnerApp    s_runner;
 
 static PlaceholderApp s_untis("Stundenplan", ICON_CALENDAR, Tint::Red);
 static PlaceholderApp s_spotify("Spotify", ICON_SPOTIFY, Tint::Spotify, true);

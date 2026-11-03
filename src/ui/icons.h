@@ -27,3 +27,7 @@
 #define ICON_MUSIC        "\xEF\x80\x81"  // F001
 #define ICON_CALL         "\xEF\x82\x95"  // F095
 #define ICON_LIGHTBULB    "\xEF\x83\xAB"  // F0EB
+#define ICON_WALKING      "\xEF\x95\x94"  // F554
+#define ICON_TROPHY       "\xEF\x82\x91"  // F091
+#define ICON_FIRE         "\xEF\x81\xAD"  // F06D
+#define ICON_ROUTE        "\xEF\x93\x97"  // F4D7

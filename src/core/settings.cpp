@@ -20,6 +20,13 @@ void putU8(const char* key, uint8_t value) {
     prefs.putUChar(key, value);
 }
 
+uint32_t getU32(const char* key, uint32_t def) { return prefs.getUInt(key, def); }
+
+void putU32(const char* key, uint32_t value) {
+    if (prefs.isKey(key) && prefs.getUInt(key) == value) return;
+    prefs.putUInt(key, value);
+}
+
 String getString(const char* key, const String& def) { return prefs.getString(key, def); }
 
 void putString(const char* key, const String& value) {

@@ -20,6 +20,7 @@ enum class Topic : uint8_t {
     Location,
     Connection,   // BLE verbunden / getrennt
     Shortcuts,
+    Activity,     // Schritte (lokal, BMA423)
     Count
 };
 
