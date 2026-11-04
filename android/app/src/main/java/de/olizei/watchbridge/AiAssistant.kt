@@ -473,6 +473,16 @@ class AiAssistant(private val app: WatchBridgeApp) {
         val list = mutableListOf(
             tool("media_control", "Steuert die laufende Musik/Medien am Handy (Spotify usw.).", listOf("action"),
                 "action" to enumProp("Befehl", MEDIA_ACTIONS)),
+            tool("play_music", "Startet in Spotify Musik per Suche: Song, Künstler, Album oder Playlist. Auch für vage Wünsche " +
+                "wie \"ruhigere Musik\" oder \"was zum Lernen\": dann eine passende Playlist (z.B. \"Chill Lofi\", \"Acoustic Calm\") " +
+                "oder einen passenden Künstler wählen. Will der Nutzer Musik, die er selbst hört, rufe vorher listening_history auf " +
+                "und wähle daraus etwas zur Stimmung Passendes. Will er Neues, wähle Künstler oder Songs, die zu seinem Geschmack " +
+                "passen, aber NICHT im Hörverlauf stehen. Antworte danach knapp, was jetzt läuft.", listOf("query", "kind"),
+                "query" to mapOf("type" to "string", "description" to "Suchbegriff: Songtitel, Künstlername, Albumname oder Playlist-Name"),
+                "kind" to enumProp("Art des Suchbegriffs", listOf("track", "artist", "album", "playlist", "any")),
+                "artist" to mapOf("type" to "string", "description" to "Künstler zu einem Song/Album (optional, macht die Suche genauer)")),
+            tool("listening_history", "Liefert den Hörverlauf des Nutzers in Spotify: Lieblingskünstler, meistgehörte und zuletzt " +
+                "gehörte Titel. Nutzen, um Musik nach seinem Geschmack auszuwählen.", emptyList()),
             tool("tv_remote", "Infrarot-Fernbedienung der Uhr für Fernseher/Beamer (Marke ist auf der Uhr eingestellt). " +
                 "ch_up/ch_down sind beim Optoma-Beamer Menü hoch/runter.", listOf("button"),
                 "button" to enumProp("Taste", IR_KEYS),
@@ -535,6 +545,26 @@ class AiAssistant(private val app: WatchBridgeApp) {
                 val m = bridge.media ?: return "Medien-Steuerung nicht verfügbar (Mitteilungszugriff fehlt)" to true
                 m.command(act)
                 "OK" to false
+            }
+            "play_music" -> {
+                val q = str(a, "query")?.takeIf { it.isNotEmpty() } ?: return bad("query")
+                val kind = str(a, "kind")?.takeIf { it in listOf("track", "artist", "album", "playlist", "any") } ?: "any"
+                val m = bridge.media ?: return "Medien-Steuerung nicht verfügbar (Mitteilungszugriff fehlt)" to true
+                val before = m.nowPlaying()
+                m.playFromSearch(q, kind, str(a, "artist")?.takeIf { it.isNotEmpty() })?.let { return it to true }
+                // Kurz warten, bis Spotify umgeschaltet hat, und melden, was läuft
+                var now: String? = null
+                for (i in 0 until 16) {
+                    Thread.sleep(250)
+                    now = m.nowPlaying()
+                    if (now != null && now != before && !now.endsWith("(pausiert)")) break
+                }
+                if (now != null && now != before) "Läuft jetzt: $now" to false
+                else "An Spotify gesendet, noch keine Bestätigung (startet vermutlich gleich)" to false
+            }
+            "listening_history" -> {
+                val m = bridge.media ?: return "Medien-Zugriff nicht verfügbar" to true
+                m.historySummary() to false
             }
             "tv_remote" -> {
                 val key = str(a, "button")?.takeIf { it in IR_KEYS } ?: return bad("button")
