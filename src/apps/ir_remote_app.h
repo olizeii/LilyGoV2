@@ -4,7 +4,8 @@
 // =============================================================================
 //  TV-Fernbedienung über die IR-LED (GPIO 2) mit IRremoteESP8266.
 //
-//  Marken mit fertigen Codes: Samsung, LG, Sony, Philips (RC6), Panasonic.
+//  Marken mit fertigen Codes: Samsung, LG, Sony, Philips (RC6), Panasonic
+//  und Optoma-Beamer (NEC 32CD, rechte Wippe = Menü hoch/runter).
 //  Auswahl über den Marken-Knopf oben links, gespeichert im NVS ("ir_brand").
 //  Lautstärke/Kanal wiederholen beim Gedrückthalten.
 // =============================================================================
@@ -24,6 +25,7 @@ private:
     lv_obj_t* makeRocker(lv_obj_t* tile, lv_coord_t x, const char* caption, Key up, Key down);
 
     lv_obj_t* m_brandLabel = nullptr;
+    lv_obj_t* m_chCaption  = nullptr;
     uint8_t m_brand        = 0;
     bool m_rc6Toggle       = false;
 };

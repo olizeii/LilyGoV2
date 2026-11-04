@@ -12,25 +12,31 @@
 namespace {
 
 constexpr const char* KEY_BRAND = "ir_brand";
+constexpr uint16_t OPTOMA_ADDR   = 0x32;  // NEC-Adresse; ~0x32 = 0xCD wird automatisch ergänzt
 
-enum class Proto : uint8_t { Samsung, NEC, Sony, RC6, Panasonic };
+enum class Proto : uint8_t { Samsung, NEC, Sony, RC6, Panasonic, NecAddr };
 
 struct Brand {
     const char* name;
     Proto proto;
+    const char* chCaption;  // Beschriftung der rechten Wippe
     uint32_t codes[IrRemoteApp::K_KEY_COUNT];  // K_POWER, VOL+, VOL-, K_MUTE, CH+, CH-, K_INPUT
 };
 
 // Verbreitete Standardcodes der jeweiligen Hersteller-Fernbedienungen
 const Brand BRANDS[] = {
-    {"Samsung", Proto::Samsung,
+    {"Samsung", Proto::Samsung, "CH",
      {0xE0E040BF, 0xE0E0E01F, 0xE0E0D02F, 0xE0E0F00F, 0xE0E048B7, 0xE0E008F7, 0xE0E0807F}},
-    {"LG", Proto::NEC,
+    {"LG", Proto::NEC, "CH",
      {0x20DF10EF, 0x20DF40BF, 0x20DFC03F, 0x20DF906F, 0x20DF00FF, 0x20DF807F, 0x20DFD02F}},
-    {"Sony", Proto::Sony, {0xA90, 0x490, 0xC90, 0x290, 0x090, 0x890, 0xA50}},
-    {"Philips", Proto::RC6, {0x0C, 0x10, 0x11, 0x0D, 0x4C, 0x4D, 0x38}},
-    {"Panasonic", Proto::Panasonic,
+    {"Sony", Proto::Sony, "CH", {0xA90, 0x490, 0xC90, 0x290, 0x090, 0x890, 0xA50}},
+    {"Philips", Proto::RC6, "CH", {0x0C, 0x10, 0x11, 0x0D, 0x4C, 0x4D, 0x38}},
+    {"Panasonic", Proto::Panasonic, "CH",
      {0x100BCBD, 0x1000405, 0x1008485, 0x1004C4D, 0x1002C2D, 0x100ACAD, 0x100A0A1}},
+    // Optoma-Projektoren: NEC, Kundencode 32 CD (laut Optoma-Handbüchern).
+    // Power ist ein Umschalter – zum Ausschalten zweimal drücken (Bestätigung am Beamer).
+    // Statt Kanälen: Menü-Navigation hoch/runter.
+    {"Optoma", Proto::NecAddr, "NAV", {0x81, 0x8C, 0x8F, 0x92, 0xC6, 0xC7, 0xC3}},
 };
 constexpr uint8_t BRAND_COUNT = sizeof(BRANDS) / sizeof(BRANDS[0]);
 
@@ -67,7 +73,8 @@ void IrRemoteApp::create(lv_obj_t* tile) {
 
     // --- Wippen links (Lautstärke) und rechts (Kanal) ---
     makeRocker(tile, 16, "VOL", K_VOL_UP, K_VOL_DOWN);
-    makeRocker(tile, 240 - 16 - 62, "CH", K_CH_UP, K_CH_DOWN);
+    lv_obj_t* chRocker = makeRocker(tile, 240 - 16 - 62, BRANDS[m_brand].chCaption, K_CH_UP, K_CH_DOWN);
+    m_chCaption = lv_obj_get_child(chRocker, lv_obj_get_child_cnt(chRocker) - 1);
 
     // --- Mitte: Stumm + Eingang ---
     lv_obj_t* mute = makeKey(tile, K_MUTE, LV_SYMBOL_MUTE, 56, 56, p.surfaceAlt, p.text, false);
@@ -138,10 +145,11 @@ lv_obj_t* IrRemoteApp::makeRocker(lv_obj_t* tile, lv_coord_t x, const char* capt
 
 void IrRemoteApp::updateBrandLabel() {
     lv_label_set_text_fmt(m_brandLabel, "%s  " LV_SYMBOL_DOWN, BRANDS[m_brand].name);
+    if (m_chCaption) lv_label_set_text(m_chCaption, BRANDS[m_brand].chCaption);
 }
 
 void IrRemoteApp::openBrandPicker() {
-    ui::Sheet s = ui::openSheet("TV-Marke");
+    ui::Sheet s = ui::openSheet("Gerät");
     for (uint8_t i = 0; i < BRAND_COUNT; i++) {
         lv_obj_t* row = theme::cardObj(s.content);
         lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
@@ -178,6 +186,7 @@ void IrRemoteApp::send(Key key) {
     switch (b.proto) {
         case Proto::Samsung:   s_ir.sendSAMSUNG(code, kSamsungBits); break;
         case Proto::NEC:       s_ir.sendNEC(code, kNECBits); break;
+        case Proto::NecAddr:   s_ir.sendNEC(s_ir.encodeNEC(OPTOMA_ADDR, code), kNECBits); break;
         case Proto::Sony:      s_ir.sendSony(code, kSony12Bits, kSonyMinRepeat); break;
         case Proto::Panasonic: s_ir.sendPanasonic(kPanasonicManufacturer, code); break;
         case Proto::RC6: {

@@ -33,7 +33,7 @@ Die Schritte zählt der **BMA423** selbst in Hardware weiter, auch wenn das Disp
 * Beim Erreichen des Tagesziels vibriert die Uhr (DRV2605).
 
 ### Fernbedienung (X=4, Y=0)
-IR-Sender an GPIO 2 (IRremoteESP8266). Oben wählst du die Marke: **Samsung, LG, Sony, Philips (RC6) oder Panasonic**. Die Wahl wird gespeichert. Es gibt Tasten für Power (rot), Lauter/Leiser, Programm ± (gedrückt halten wiederholt), Stumm und Quelle. Der IR-Sender hat nur wenige Meter Reichweite, also auf den Fernseher zielen.
+IR-Sender an GPIO 2 (IRremoteESP8266). Oben wählst du die Marke: **Samsung, LG, Sony, Philips (RC6), Panasonic oder Optoma (Beamer)**. Die Wahl wird gespeichert. Bei Optoma steuert die rechte Wippe („NAV“) das Menü hoch/runter, und Power schaltet um: Zum Ausschalten zweimal drücken. Es gibt Tasten für Power (rot), Lauter/Leiser, Programm ± (gedrückt halten wiederholt), Stumm und Quelle. Der IR-Sender hat nur wenige Meter Reichweite, also auf den Fernseher zielen.
 
 ### Stundenplan (X=2, Y=0)
 Zeigt Karten mit Zeit, Fach, Raum und Lehrkraft. **Entfall** ist rot und durchgestrichen, **Vertretung** orange, **Prüfung** lila. Die laufende Stunde ist mit „JETZT“ markiert, die Liste scrollt automatisch dorthin. Doppelstunden fasst die App zusammen. Nach Schulschluss erscheint der nächste Schultag.
@@ -122,7 +122,7 @@ src/
   apps/watchfaces.cpp/h    Spalte X=1: Digital, Analog, Modern, Aktivität, Info + Akku-Overlay
   apps/tictactoe_app.*     Tic Tac Toe gegen Minimax-KI
   apps/runner_app.*        Endlos-Runner (50 fps, Rekord im NVS)
-  apps/ir_remote_app.*     TV-Fernbedienung (5 Marken)
+  apps/ir_remote_app.*     TV-/Beamer-Fernbedienung (6 Marken)
   apps/untis_app.*         Stundenplan
   apps/media_app.*         Spotify / Medien-Steuerung
   apps/messages_app.*      Mitteilungen + Detailansicht
