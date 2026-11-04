@@ -45,6 +45,11 @@ class Prefs(ctx: Context) {
         get() = sp.getString("ai_key", "") ?: ""
         set(v) = sp.edit { putString("ai_key", v.trim()) }
 
+    /** Claude-Modell für den KI-Assistenten (Standard: Haiku 5.5 – schnell und günstig). */
+    var aiModel: String
+        get() = sp.getString("ai_model", "claude-haiku-5-5") ?: "claude-haiku-5-5"
+        set(v) = sp.edit { putString("ai_model", v) }
+
     /** Eigene Befehle für Tasker/MacroDroid, eine Zeile pro Befehl: "name: was er tut". */
     var aiCommands: String
         get() = sp.getString("ai_commands", "") ?: ""

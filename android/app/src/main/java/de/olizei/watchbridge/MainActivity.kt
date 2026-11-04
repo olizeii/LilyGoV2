@@ -486,6 +486,7 @@ class MainActivity : ComponentActivity() {
         val p = app.prefs
         var key by remember { mutableStateOf(p.aiKey) }
         var cmds by remember { mutableStateOf(p.aiCommands) }
+        var model by remember { mutableStateOf(p.aiModel) }
         var question by remember { mutableStateOf("") }
         val status by app.ai.status.collectAsState()
 
@@ -494,9 +495,34 @@ class MainActivity : ComponentActivity() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RowIcon(Icons.Default.AutoAwesome, c.purple)
                     Spacer(Modifier.width(12.dp))
-                    Text("Lange auf ein Watchface drücken und sprechen. Antwort von Claude Opus 5.5, " +
+                    Text("Lange auf ein Watchface drücken und sprechen. Antwort von Claude, " +
                         "Spracherkennung am Handy.", color = c.secondary, fontSize = 13.sp)
                 }
+                // Modellwahl (wird sofort gespeichert)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(c.gray.copy(alpha = 0.18f))
+                        .padding(2.dp),
+                ) {
+                    AiAssistant.MODELS.forEach { m ->
+                        val sel = m.id == AiAssistant.modelFor(model).id
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(7.dp))
+                                .background(if (sel) c.purple else Color.Transparent)
+                                .clickable { model = m.id; p.aiModel = m.id }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(m.label, color = if (sel) Color.White else c.text, fontSize = 14.sp,
+                                fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal)
+                        }
+                    }
+                }
+                Text(AiAssistant.modelFor(model).hint, color = c.secondary, fontSize = 12.sp)
                 OutlinedTextField(
                     key, { key = it }, label = { Text("Claude-API-Schlüssel (sk-ant-…)") }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
@@ -504,7 +530,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text("Schlüssel und Guthaben unter console.anthropic.com – dort am besten ein Monatslimit setzen. " +
-                    "Kurze Fragen kosten meist unter 1 Cent.", color = c.secondary, fontSize = 12.sp)
+                    "Wiederholte Anweisungen werden zwischengespeichert (günstiger).", color = c.secondary, fontSize = 12.sp)
                 OutlinedTextField(
                     cmds, { cmds = it }, label = { Text("Eigene Tasker-Befehle (optional)") },
                     placeholder = { Text("licht_an: Wohnzimmerlicht einschalten") },

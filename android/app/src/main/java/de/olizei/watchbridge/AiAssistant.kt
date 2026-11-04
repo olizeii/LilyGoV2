@@ -26,6 +26,7 @@ import com.anthropic.errors.PermissionDeniedException
 import com.anthropic.errors.RateLimitException
 import com.anthropic.errors.UnauthorizedException
 import com.anthropic.helpers.MessageAccumulator
+import com.anthropic.models.messages.CacheControlEphemeral
 import com.anthropic.models.messages.ContentBlockParam
 import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.MessageParam
@@ -36,6 +37,7 @@ import com.anthropic.models.messages.TextBlockParam
 import com.anthropic.models.messages.Tool
 import com.anthropic.models.messages.ToolResultBlockParam
 import com.anthropic.models.messages.ToolUseBlock
+import com.anthropic.models.messages.WebSearchTool20250305
 import com.anthropic.models.messages.WebSearchTool20260209
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +56,7 @@ import java.util.concurrent.Executors
  * KI-Assistent der Uhr:
  *  1. Die Uhr streamt Sprache (16 kHz, IMA-ADPCM, siehe firmware src/core/voice.h) -> wird hier
  *     zu PCM decodiert und über eine Pipe in Androids Spracherkennung geschoben (gratis, am Handy).
- *  2. Der erkannte Text geht an Claude (Opus 5.5) mit Werkzeugen für Uhr- und Handy-Aktionen.
+ *  2. Der erkannte Text geht an Claude (Modell wählbar, Standard Haiku 5.5) mit Werkzeugen für Uhr- und Handy-Aktionen.
  *  3. Die Antwort wird Stück für Stück als AI_TEXT an die Uhr gestreamt.
  */
 class AiAssistant(private val app: WatchBridgeApp) {
@@ -329,17 +331,23 @@ class AiAssistant(private val app: WatchBridgeApp) {
         }
     }
 
+    private var historyModel = ""
+
     private fun runClaude(s: Int, text: String) {
         val c = clientFor(app.prefs.aiKey)
         val pump = TextPump(s)
         val tools = buildTools()
+        val model = modelFor(app.prefs.aiModel)
         var inTok = 0L
         var outTok = 0L
+        var cacheRead = 0L
+        var cacheWrite = 0L
 
         synchronized(history) {
             val now = System.currentTimeMillis()
             // Neues Gespräch nach 5 min Pause oder wenn es zu lang wird (nur ganze Gespräche verwerfen)
-            if (now - lastTurnAt > 5 * 60_000 || history.size > 30) history.clear()
+            if (now - lastTurnAt > 5 * 60_000 || history.size > 30 || historyModel != model.id) history.clear()
+            historyModel = model.id   // Denkblöcke gehören zum Modell -> beim Wechsel neu beginnen
             lastTurnAt = now
             history += userText(context() + "\n\n" + text)
         }
@@ -347,17 +355,28 @@ class AiAssistant(private val app: WatchBridgeApp) {
         for (round in 0 until MAX_ROUNDS) {
             if (s != session) return
             val params = MessageCreateParams.builder()
-                .model(MODEL)
+                .model(model.id)
                 .maxTokens(8000L)
-                .system(SYSTEM_PROMPT)
+                // Anweisungen + Werkzeuge ändern sich nie -> fester Cache-Punkt dahinter
+                .systemOfTextBlockParams(listOf(
+                    TextBlockParam.builder().text(SYSTEM_PROMPT).cacheControl(CacheControlEphemeral.builder().build()).build()))
+                // ... und automatisch am Ende des Verlaufs: Folgefragen und Werkzeug-Runden lesen aus dem Cache
+                .cacheControl(CacheControlEphemeral.builder().build())
                 // Kurze Sprachfragen: wenig Nachdenken = schnelle Antwort
                 .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW).build())
                 .apply { tools.forEach { addTool(it) } }
-                .addTool(WebSearchTool20260209.builder().maxUses(3L).build())
+                .apply {
+                    if (model.newSearch) addTool(WebSearchTool20260209.builder().maxUses(3L).build())
+                    else addTool(WebSearchTool20250305.builder().maxUses(3L).build())
+                }
                 .messages(synchronized(history) { history.toList() })
-                // Lehnt Opus eine Anfrage ab, beantwortet sie Anthropic automatisch mit einem passenden Ersatzmodell
-                .putAdditionalHeader("anthropic-beta", "server-side-fallback-2026-07-01")
-                .putAdditionalBodyProperty("fallbacks", JsonValue.from("default"))
+                .apply {
+                    // Lehnt Opus eine Anfrage ab, beantwortet sie Anthropic automatisch mit einem Ersatzmodell
+                    if (model.fallback) {
+                        putAdditionalHeader("anthropic-beta", "server-side-fallback-2026-07-01")
+                        putAdditionalBodyProperty("fallbacks", JsonValue.from("default"))
+                    }
+                }
                 .build()
 
             val acc = MessageAccumulator.create()
@@ -370,8 +389,11 @@ class AiAssistant(private val app: WatchBridgeApp) {
             }
             stream = null
             val msg = acc.message()
-            inTok += msg.usage().inputTokens()
-            outTok += msg.usage().outputTokens()
+            val u = msg.usage()
+            inTok += u.inputTokens()
+            outTok += u.outputTokens()
+            cacheRead += u.cacheReadInputTokens().orElse(0L)
+            cacheWrite += u.cacheCreationInputTokens().orElse(0L)
             if (s != session) return
             synchronized(history) { history += msg.toParam() }
 
@@ -390,9 +412,11 @@ class AiAssistant(private val app: WatchBridgeApp) {
                 else -> {
                     pump.flush()
                     bridge.send("AI_DONE")
-                    val cents = (inTok * IN_PRICE + outTok * OUT_PRICE) / 1_000_000.0 * 100
+                    val usd = (inTok * model.inPrice + cacheWrite * model.inPrice * 1.25 +
+                        cacheRead * model.cachePrice + outTok * model.outPrice) / 1_000_000.0
                     _status.value = "Du: $text\nKI: ${pump.total.trim()}\n" +
-                        "%,d Token ≈ %.2f Cent".format(Locale.GERMANY, inTok + outTok, cents)
+                        "%s · %,d Token (%,d aus Cache) ≈ %.3f Cent".format(Locale.GERMANY, model.label,
+                            inTok + cacheWrite + cacheRead + outTok, cacheRead, usd * 100)
                     return
                 }
             }
@@ -626,9 +650,21 @@ class AiAssistant(private val app: WatchBridgeApp) {
 
     companion object {
         private const val TAG = "AiAssistant"
-        private const val MODEL = "claude-opus-5-5"
-        private const val IN_PRICE = 4.0    // $ pro 1 Mio. Token (Opus 5.5)
-        private const val OUT_PRICE = 20.0
+        /** Preise in $ pro 1 Mio. Token. */
+        data class AiModel(
+            val id: String, val label: String, val hint: String,
+            val inPrice: Double, val outPrice: Double, val cachePrice: Double,
+            val fallback: Boolean,    // serverseitiger Ersatz bei Ablehnung
+            val newSearch: Boolean,   // web_search_20260209 (mit Filterung)
+        )
+
+        val MODELS = listOf(
+            AiModel("claude-haiku-5-5", "Haiku 5.5", "am schnellsten · unter 0,1 Cent pro Frage", 0.10, 0.50, 0.01, false, false),
+            AiModel("claude-sonnet-5-5", "Sonnet 5.5", "ausgewogen · ca. 1 Cent pro Frage", 2.0, 10.0, 0.20, false, true),
+            AiModel("claude-opus-5-5", "Opus 5.5", "am klügsten · ca. 2–3 Cent pro Frage", 4.0, 20.0, 0.20, true, true),
+        )
+
+        fun modelFor(id: String): AiModel = MODELS.firstOrNull { it.id == id } ?: MODELS[0]
         private const val MAX_ROUNDS = 6
         private const val SAMPLE_RATE = 16000
         private const val MAX_PCM = 16000 * 2 * 20   // max. 20 s Aufnahme puffern
