@@ -1,5 +1,6 @@
 #include "apps.h"
 
+#include "apps/hop_tower_app.h"
 #include "apps/ir_remote_app.h"
 #include "apps/media_app.h"
 #include "apps/messages_app.h"
@@ -15,6 +16,7 @@ namespace apps {
 
 // --- Platzhalter (werden Schritt für Schritt durch echte Apps ersetzt) -------
 using theme::Tint;
+static HopTowerApp  s_hopTower;
 static TicTacToeApp s_ticTacToe;
 static RunnerApp    s_runner;
 
@@ -31,8 +33,9 @@ static PlaceholderApp s_hack("Hack", ICON_TERMINAL, Tint::Gray);
 
 void registerAll() {
     // X=0  Games
-    ui::registerApp(0, 0, &s_ticTacToe);
-    ui::registerApp(0, 1, &s_runner);
+    ui::registerApp(0, 0, &s_hopTower);
+    ui::registerApp(0, 1, &s_ticTacToe);
+    ui::registerApp(0, 2, &s_runner);
 
     // X=1  Watchfaces (Start-Spalte)
     watchfaces::registerColumn(ui::COL_WATCHFACES);

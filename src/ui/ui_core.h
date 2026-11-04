@@ -7,9 +7,9 @@
 //  UI-Core – 2D-Raster (lv_tileview), App-Registrierung, Watchface-Gedächtnis
 //
 //      X=0      X=1 (Start)   X=2        X=3        X=4
-//  Y=0 TicTac   Digital       Untis      Widget 1   IR-Remote
-//  Y=1 Runner   Analog        Spotify    Notizen    Hack
-//  Y=2          Modern        Nachr.     Widget 2
+//  Y=0 Hüpfturm Digital       Untis      Widget 1   IR-Remote
+//  Y=1 TicTac   Analog        Spotify    Notizen    Hack
+//  Y=2 Runner   Modern        Nachr.     Widget 2
 //  Y=3          Aktivität
 //  Y=4          Info
 //

@@ -6,9 +6,9 @@ Firmware für die LilyGo T-Watch-S3 (ESP32-S3) mit LVGL 8.3, einem 2D-Raster (`l
 
 ```
         X=0          X=1 (Start)    X=2           X=3          X=4
-Y=0     Tic Tac Toe  Digital        Stundenplan   Kurzbefehl 1 Fernbedienung
-Y=1     Runner       Analog         Spotify       Notizen      Hack
-Y=2                  Modern         Mitteilungen  Kurzbefehl 2
+Y=0     Hüpfturm     Digital        Stundenplan   Kurzbefehl 1 Fernbedienung
+Y=1     Tic Tac Toe  Analog         Spotify       Notizen      Hack
+Y=2     Runner       Modern         Mitteilungen  Kurzbefehl 2
 Y=3                  Aktivität
 Y=4                  Info (Akku, Standort)
 ```
@@ -19,10 +19,13 @@ Y=4                  Info (Akku, Standort)
 
 ## Funktionen
 
-### Tic Tac Toe (X=0, Y=0)
+### Hüpfturm (X=0, Y=0)
+Ein vertikales Endlos-Sprungspiel. Der türkise Tropfen klettert Stockwerk für Stockwerk nach oben. Jedes Stockwerk ist ein farbiger Balken mit einer Lücke, die hin- und herwandert. Tippen lässt ihn springen. Nur wer unter der Lücke abspringt, kommt durch, danach fährt der Balken hinter ihm zu. Wer daneben springt, prallt mit dem Kopf ab. Von unten steigt Lava, die mit jedem Stockwerk schneller wird, während die Lücken schmaler und flinker werden. Alle 10 Stockwerke gibt es Vibrationsfeedback, der Rekord wird im NVS gespeichert (`hop_hi`).
+
+### Tic Tac Toe (X=0, Y=1)
 Du (✕, blau) spielst gegen die Uhr (◯, orange). Die KI rechnet per Minimax, macht aber zu 25 % einen Zufallszug und ist damit schlagbar. Wer anfängt, wechselt jede Runde. Die Gewinnlinie wird farbig hervorgehoben, dazu gibt es Vibrationsfeedback. Tippen startet die nächste Runde.
 
-### Runner (X=0, Y=1)
+### Runner (X=0, Y=2)
 Ein Endlos-Laufspiel: Tippen lässt die Figur springen, damit sie den Säulen ausweicht. Das Tempo steigt mit den Punkten, ab 150 Punkten kommen Doppelsäulen. Alle 100 Punkte gibt es einen kurzen Vibrationsimpuls. Der Rekord (🏆) wird im NVS gespeichert. Während des Laufens ist das Wischen gesperrt. Schaltet sich das Display aus oder verlässt du die Kachel, wird das Spiel beendet.
 
 ### Schritte / Aktivität (X=1, Y=3 + Watchfaces)
@@ -121,6 +124,7 @@ src/
   apps/apps.cpp            ZENTRALE Registry: welche App liegt auf welcher Kachel
   apps/watchfaces.cpp/h    Spalte X=1: Digital, Analog, Modern, Aktivität, Info + Akku-Overlay
   apps/tictactoe_app.*     Tic Tac Toe gegen Minimax-KI
+  apps/hop_tower_app.*     Hüpfturm (vertikaler Sprung-Kletterer)
   apps/runner_app.*        Endlos-Runner (50 fps, Rekord im NVS)
   apps/ir_remote_app.*     TV-/Beamer-Fernbedienung (6 Marken)
   apps/untis_app.*         Stundenplan
