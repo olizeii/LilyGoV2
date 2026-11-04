@@ -1,43 +1,42 @@
 #include "hop_tower_app.h"
 
 #include <esp_random.h>
+#include <math.h>
 
 #include "core/settings.h"
 #include "hal/display.h"
 #include "hal/haptics.h"
+#include "ui/icons.h"
 #include "ui/theme.h"
 #include "ui/ui_core.h"
 
 namespace {
 
-constexpr const char* KEY_BEST = "hop_hi";
+constexpr const char* KEY_BEST  = "hop_hi";
+constexpr const char* KEY_DROPS = "hop_drops";
 
-constexpr uint32_t FRAME_MS = 20;      // 50 fps
-constexpr lv_coord_t W      = 240;
-constexpr lv_coord_t H      = 240;
+constexpr uint32_t FRAME_MS = 20;            // 50 fps
+constexpr lv_coord_t W = 240, H = 240;
+constexpr float WALL   = 6;                  // Wanddicke
+constexpr float INNER  = W - 2 * WALL;       // 228 px Schachtbreite
+constexpr float CX     = W / 2.0f;
 
-constexpr float SPACING     = 64;      // Abstand der Stockwerke
-constexpr float BAR_H       = 8;       // Balkendicke
-constexpr float D           = 22;      // Tropfen-Durchmesser
-constexpr float PX          = (W - D) / 2;   // Tropfen links (fix in der Mitte)
-constexpr float HIT_INSET   = 3;       // Hitbox etwas kleiner -> fühlt sich fair an
+constexpr float SPACING = 84;                // Etagenabstand -> ~2,5 Etagen sichtbar
+constexpr float T       = 8;                 // Plattformdicke
+constexpr float J       = 24;                // Würfel
+constexpr float CAM_OFF = 68;                // Würfel steht im unteren Drittel
 
-constexpr float GRAVITY     = 0.6f;
-constexpr float JUMP_V      = 10.0f;   // Scheitel ~83 px: sicher durch ein Stockwerk, nie durch zwei
-constexpr float CAM_OFFSET  = 56;      // Tropfen steht so weit über dem unteren Rand
+constexpr float GRAVITY = 0.75f;
+const float JUMP_V      = sqrtf(2 * GRAVITY * (SPACING + 10));  // knapp über die nächste Plattform
 
-constexpr float GAP_START   = 74;      // Lückenbreite am Anfang ...
-constexpr float GAP_MIN     = 40;      // ... und ganz oben
-constexpr float GAP_V_START = 1.1f;
-constexpr float GAP_V_MAX   = 3.0f;
-constexpr float LAVA_START  = 0.22f;   // px/Frame
-constexpr float LAVA_MAX    = 0.85f;
+constexpr float GAP_A    = 64;               // Schiebeplattform: Lücke offen
+constexpr float HINGE_DEG = 40;              // Klappplattform: Winkel offen
+constexpr float STUCK_MIN = 0.30f;           // < 30 % der Würfelbreite -> abprallen
+constexpr float SQUEEZE   = 11;              // so schmal wird er eingeklemmt
+constexpr float PUSH_TAP  = 0.17f;           // ~6 Taps zum Rausdrücken
+constexpr float PUSH_SLIP = 0.007f;          // rutscht ohne Tippen zurück
 
-// Stockwerksfarben (Apple-Systemfarben im Kreis)
-constexpr theme::Tint FLOOR_TINTS[] = {
-    theme::Tint::Blue, theme::Tint::Purple, theme::Tint::Pink,
-    theme::Tint::Orange, theme::Tint::Yellow, theme::Tint::Green,
-};
+constexpr uint8_t BUFFER_FRAMES = 5;         // 100 ms
 
 int rnd(int lo, int hi) { return lo + int(esp_random() % uint32_t(hi - lo + 1)); }
 
@@ -51,43 +50,89 @@ lv_obj_t* rect(lv_obj_t* parent, lv_coord_t w, lv_coord_t h, lv_coord_t radius) 
     return o;
 }
 
+void hide(lv_obj_t* o) { lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN); }
+void show(lv_obj_t* o) { lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN); }
+
 }  // namespace
 
-// -----------------------------------------------------------------------------
+// =============================================================================
 //  Aufbau
-// -----------------------------------------------------------------------------
+// =============================================================================
 void HopTowerApp::create(lv_obj_t* tile) {
-    m_tile  = tile;
-    m_best_ = settings::getU32(KEY_BEST, 0);
+    m_tile = tile;
+    m_best = settings::getU32(KEY_BEST, 0);
+    m_dropsTotal = settings::getU32(KEY_DROPS, 0);
+
+    lv_style_init(&m_platStyle);
+    lv_style_init(&m_lineStyle);
+    lv_style_set_line_width(&m_lineStyle, T);
+    lv_style_set_line_rounded(&m_lineStyle, true);
 
     for (auto& f : m_floors) {
-        f.left  = rect(tile, 10, BAR_H, 4);
-        f.right = rect(tile, 10, BAR_H, 4);
+        f.rectL = rect(tile, 10, T, 3);
+        f.rectR = rect(tile, 10, T, 3);
+        lv_obj_add_style(f.rectL, &m_platStyle, 0);
+        lv_obj_add_style(f.rectR, &m_platStyle, 0);
+        f.lineL = lv_line_create(tile);
+        f.lineR = lv_line_create(tile);
+        lv_obj_add_style(f.lineL, &m_lineStyle, 0);
+        lv_obj_add_style(f.lineR, &m_lineStyle, 0);
+        f.drop = lv_label_create(tile);
+        lv_obj_set_style_text_font(f.drop, &font_title, 0);
+        lv_obj_set_style_text_color(f.drop, theme::tint(theme::Tint::Cyan), 0);
+        lv_label_set_text(f.drop, ICON_DROP);
+        hide(f.drop);
     }
 
-    // Tropfen: türkis, zwei Augen mit Pupillen
-    m_player = rect(tile, D, D, LV_RADIUS_CIRCLE);
-    lv_obj_set_style_bg_color(m_player, theme::tint(theme::Tint::Teal), 0);
+    // Würfel: kräftiges Grün, zwei Augen
+    m_jelly = rect(tile, J, J, 6);
+    lv_obj_set_style_bg_color(m_jelly, theme::tint(theme::Tint::Green), 0);
     for (int i = 0; i < 2; i++) {
-        m_eyes[i] = rect(m_player, 7, 7, LV_RADIUS_CIRCLE);
+        m_eyes[i] = rect(m_jelly, 6, 7, LV_RADIUS_CIRCLE);
         lv_obj_set_style_bg_color(m_eyes[i], lv_color_white(), 0);
         lv_obj_t* pupil = rect(m_eyes[i], 3, 3, LV_RADIUS_CIRCLE);
         lv_obj_set_style_bg_color(pupil, lv_color_black(), 0);
-        lv_obj_align(pupil, LV_ALIGN_TOP_MID, 0, 1);
+        lv_obj_align(pupil, LV_ALIGN_BOTTOM_MID, 0, -1);
     }
 
-    // Lava: Fläche + hellere Oberkante
-    m_lava = rect(tile, W, H, 0);
-    lv_obj_set_style_bg_color(m_lava, theme::tint(theme::Tint::Red), 0);
-    lv_obj_set_style_bg_opa(m_lava, LV_OPA_80, 0);
-    m_lavaTop = rect(tile, W, 4, 2);
-    lv_obj_set_style_bg_color(m_lavaTop, theme::tint(theme::Tint::Orange), 0);
+    for (auto& p : m_part) {
+        p = rect(tile, 5, 5, LV_RADIUS_CIRCLE);
+        lv_obj_set_style_bg_color(p, theme::tint(theme::Tint::Green), 0);
+        hide(p);
+    }
 
-    // Anzeigen (über allem)
-    m_best = theme::label(tile, theme::textCaption(), "");
-    m_score = theme::label(tile, theme::textHeadline(), "0");
-    m_title = theme::label(tile, theme::textTitle(), "");
-    m_hint  = theme::label(tile, theme::textCaption(), "");
+    // Flüssigkeit: Säulen mit Sinus-Oberkante (leuchtendes Pink)
+    for (int i = 0; i < WAVE_COLS; i++) {
+        m_wave[i] = rect(tile, W / WAVE_COLS + 1, 10, 0);
+        lv_obj_set_style_bg_color(m_wave[i], theme::tint(theme::Tint::Pink), 0);
+        lv_obj_set_style_bg_opa(m_wave[i], LV_OPA_90, 0);
+    }
+
+    // Wände (über der Flüssigkeit, damit der Schacht klar bleibt)
+    for (int i = 0; i < 2; i++) {
+        m_walls[i] = rect(tile, lv_coord_t(WALL), H, 0);
+        lv_obj_set_pos(m_walls[i], i ? lv_coord_t(W - WALL) : 0, 0);
+    }
+
+    m_score = lv_label_create(tile);
+    lv_obj_add_style(m_score, theme::textLarge(), 0);
+    lv_label_set_text(m_score, "0");
+
+    // Start-/Game-Over-Anzeige
+    m_overlay = lv_obj_create(tile);
+    lv_obj_remove_style_all(m_overlay);
+    lv_obj_clear_flag(m_overlay, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(m_overlay, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(m_overlay, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(m_overlay, 2, 0);
+    m_ovTitle = theme::label(m_overlay, theme::textTitle(), "");
+    m_ovBig   = lv_label_create(m_overlay);
+    lv_obj_add_style(m_ovBig, theme::textLarge(), 0);
+    m_ovLine1 = theme::label(m_overlay, theme::textCaption(), "");
+    m_ovLine2 = theme::label(m_overlay, theme::textCaption(), "");
+    m_ovHint  = theme::label(m_overlay, theme::textHeadline(), "");
+    lv_obj_add_style(m_ovHint, theme::textAccent(), 0);
+    lv_obj_set_style_pad_top(m_ovHint, 6, 0);
 
     applyColors();
     theme::onChange([this] { applyColors(); });
@@ -96,9 +141,14 @@ void HopTowerApp::create(lv_obj_t* tile) {
     lv_obj_add_event_cb(
         tile,
         [](lv_event_t* e) {
+            auto* self = static_cast<HopTowerApp*>(lv_event_get_user_data(e));
             lv_event_code_t code = lv_event_get_code(e);
-            if (code != LV_EVENT_PRESSED && code != LV_EVENT_CLICKED) return;
-            static_cast<HopTowerApp*>(lv_event_get_user_data(e))->onPress(code == LV_EVENT_CLICKED);
+            if (code == LV_EVENT_PRESSED && self->m_state == State::Running) {
+                self->tap();
+            } else if (code == LV_EVENT_CLICKED) {
+                if (self->m_state == State::Ready) self->start();
+                else if (self->m_state == State::Over && millis() - self->m_overAt > 700) self->start();
+            }
         },
         LV_EVENT_ALL, this);
 
@@ -109,38 +159,53 @@ void HopTowerApp::create(lv_obj_t* tile) {
 }
 
 void HopTowerApp::applyColors() {
-    // Balken tragen Systemfarben -> funktionieren in Hell und Dunkel; nur Texte folgen dem Theme
-    for (auto& f : m_floors) {
-        if (f.index < 0) continue;
-        lv_color_t c = f.index == 0 ? theme::colors().surfaceAlt
-                                    : theme::tint(FLOOR_TINTS[f.index % (sizeof(FLOOR_TINTS) / sizeof(FLOOR_TINTS[0]))]);
-        lv_obj_set_style_bg_color(f.left, c, 0);
-        lv_obj_set_style_bg_color(f.right, c, 0);
-    }
+    const theme::Palette& p = theme::colors();
+    lv_style_set_bg_color(&m_platStyle, p.textSecondary);
+    lv_style_set_line_color(&m_lineStyle, p.textSecondary);
+    lv_obj_report_style_change(&m_platStyle);
+    lv_obj_report_style_change(&m_lineStyle);
+    for (auto* w : m_walls) lv_obj_set_style_bg_color(w, p.surfaceAlt, 0);
+    lv_obj_set_style_bg_color(m_overlay, p.bg, 0);
 }
 
-// -----------------------------------------------------------------------------
-//  Welt
-// -----------------------------------------------------------------------------
+void HopTowerApp::onShow() {
+    if (m_state != State::Running) showReady();
+    lv_timer_resume(m_timer);  // auch im Startbildschirm: Würfel wabbelt, Flüssigkeit wellt
+}
+
+void HopTowerApp::onHide() {
+    stop(false);
+    lv_timer_pause(m_timer);
+}
+
+bool HopTowerApp::onButton() {
+    if (m_state != State::Running) return false;  // sonst: Display aus wie gewohnt
+    tap();
+    return true;
+}
+
+// =============================================================================
+//  Etagen
+// =============================================================================
 void HopTowerApp::initFloor(Floor& f, int32_t i) {
     f.index = i;
-    f.closed = false;
-    if (i == 0) {  // Boden ohne Lücke
-        f.gapW = 0;
-        f.gapX = 0;
-        f.gapV = 0;
+    f.passed = f.fast = false;
+    f.t = 0;
+    f.delay = 0;
+    f.hinge = rnd(0, 1) == 1;
+    f.hasDrop = i >= 3 && rnd(0, 9) == 0;
+    f.dropTaken = false;
+    if (i <= 0) {  // Boden
+        f.st = Plat::Closed;
+        f.open = 0;
+        f.hinge = false;
+        f.hasDrop = false;
     } else {
-        float t = min(1.0f, i / 60.0f);  // Schwierigkeit steigt bis Stockwerk 60
-        f.gapW = GAP_START - (GAP_START - GAP_MIN) * t + rnd(-4, 4);
-        float speed = GAP_V_START + (GAP_V_MAX - GAP_V_START) * t;
-        speed *= rnd(85, 115) / 100.0f;
-        f.gapV = rnd(0, 1) ? speed : -speed;
-        f.gapX = rnd(0, int(W - f.gapW));
+        f.st = Plat::Open;
+        f.open = 1;
+        // Anfangs gemütlich (1,8 s), später schnell (min. 0,5 s)
+        f.dur = fmaxf(26.0f, 90.0f * powf(0.965f, float(i)));
     }
-    lv_color_t c = i == 0 ? theme::colors().surfaceAlt
-                          : theme::tint(FLOOR_TINTS[i % (sizeof(FLOOR_TINTS) / sizeof(FLOOR_TINTS[0]))]);
-    lv_obj_set_style_bg_color(f.left, c, 0);
-    lv_obj_set_style_bg_color(f.right, c, 0);
 }
 
 HopTowerApp::Floor& HopTowerApp::slotFor(int32_t i) {
@@ -149,194 +214,304 @@ HopTowerApp::Floor& HopTowerApp::slotFor(int32_t i) {
     return f;
 }
 
-bool HopTowerApp::insideGap(const Floor& f) const {
-    if (f.gapW <= 0) return false;
-    return PX + HIT_INSET >= f.gapX && PX + D - HIT_INSET <= f.gapX + f.gapW;
+void HopTowerApp::scheduleClose(int32_t i) {
+    Floor& f = slotFor(i);
+    if (f.st != Plat::Open) return;
+    f.st = Plat::Delay;
+    f.delay = uint16_t(rnd(10, 40));  // 0,2–0,8 s
 }
 
-void HopTowerApp::resetWorld() {
-    for (auto& f : m_floors) f.index = -1;
-    m_py = 0;
-    m_vy = 0;
-    m_stand = 0;
-    m_cam = -CAM_OFFSET;
-    m_lavaH = -70;
-    m_squash = 0;
-    m_jumpBuffer = 0;
-    m_frame = 0;
-    for (int32_t i = 0; i < SLOTS; i++) slotFor(i);
-    // Erste Lücke nicht direkt über dem Tropfen starten lassen
-    Floor& first = slotFor(1);
-    first.gapX = first.gapV > 0 ? 0 : W - first.gapW;
-}
-
-// -----------------------------------------------------------------------------
-//  Zustände
-// -----------------------------------------------------------------------------
-void HopTowerApp::showReady() {
-    if (m_state == State::Running) return;
-    m_state = State::Ready;
-    resetWorld();
-    m_points = 0;
-    render();
-
-    lv_label_set_text(m_title, "Hüpfturm");
-    lv_obj_align(m_title, LV_ALIGN_CENTER, 0, -50);
-    lv_label_set_text(m_hint, "Durch die Lücken springen");
-    lv_obj_align(m_hint, LV_ALIGN_CENTER, 0, -22);
-    lv_obj_clear_flag(m_title, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(m_hint, LV_OBJ_FLAG_HIDDEN);
-    updateScore();
-}
-
-void HopTowerApp::onPress(bool clicked) {
-    switch (m_state) {
-        case State::Ready:
-            if (clicked) start();
-            break;
-        case State::Running:
-            if (clicked) break;
-            if (m_stand >= 0) {
-                m_vy = JUMP_V;
-                m_stand = -1;
-            } else {
-                m_jumpBuffer = 8;  // kurz vor der Landung getippt -> direkt weiter
-            }
-            break;
-        case State::Over:
-            if (clicked && millis() - m_overAt > 600) {
-                m_state = State::Ready;
-                showReady();
-                start();
-            }
-            break;
+void HopTowerApp::updateFloors() {
+    int32_t base = int32_t(floorf(m_cam / SPACING)) - 1;
+    for (int32_t i = base; i < base + SLOTS; i++) {
+        if (i <= 0) continue;
+        Floor& f = slotFor(i);
+        if (f.st == Plat::Delay && --f.delay == 0) f.st = Plat::Closing;
+        if (f.fast && f.st != Plat::Closed) f.st = Plat::Closing;
+        if (f.st != Plat::Closing) continue;
+        f.t += f.fast ? f.dur / 6 : 1;  // nach dem Durchspringen in ~6 Frames zu
+        if (f.t >= f.dur) {
+            f.t = f.dur;
+            f.open = 0;
+            f.st = Plat::Closed;
+        } else {
+            f.open = 1.0f - powf(f.t / f.dur, 1.3f);  // leicht beschleunigt
+        }
     }
 }
 
+// Freie Breite in der Mitte (für Kollision und Zeichnen)
+float HopTowerApp::gapOf(const Floor& f) const {
+    if (f.open <= 0) return 0;
+    if (!f.hinge) return GAP_A * f.open;
+    float a = HINGE_DEG * f.open * float(M_PI) / 180.0f;
+    return INNER * (1.0f - cosf(a));
+}
+
+// =============================================================================
+//  Ablauf
+// =============================================================================
+void HopTowerApp::resetWorld() {
+    for (auto& f : m_floors) f.index = -1;
+    m_by = 0;
+    m_vy = 0;
+    m_stand = m_from = 0;
+    m_mode = Mode::Standing;
+    m_checked = false;
+    m_stuckP = 0;
+    m_cam = -CAM_OFF;
+    m_lava = -60;
+    m_trapped = false;
+    m_buffer = m_dying = m_pop = 0;
+    m_wob = m_wobV = 0;
+    m_points = m_drops = 0;
+    m_newRecord = false;
+    lv_obj_set_style_bg_opa(m_jelly, LV_OPA_COVER, 0);
+    for (auto* p : m_part) hide(p);
+}
+
+void HopTowerApp::setOverlay(bool visible, bool dim) {
+    if (!visible) {
+        hide(m_overlay);
+        return;
+    }
+    show(m_overlay);
+    if (dim) {  // Game Over: ganzer Bildschirm abgedunkelt
+        lv_obj_set_size(m_overlay, W, H);
+        lv_obj_set_pos(m_overlay, 0, 0);
+        lv_obj_set_style_bg_opa(m_overlay, LV_OPA_80, 0);
+    } else {    // Start: nur oberer Bereich, Würfel bleibt sichtbar
+        lv_obj_set_size(m_overlay, W, 140);
+        lv_obj_set_pos(m_overlay, 0, 6);
+        lv_obj_set_style_bg_opa(m_overlay, LV_OPA_TRANSP, 0);
+    }
+}
+
+void HopTowerApp::showReady() {
+    m_state = State::Ready;
+    resetWorld();
+    for (int32_t i = 0; i < SLOTS - 1; i++) slotFor(i);
+
+    lv_label_set_text(m_ovTitle, "Hüpfturm");
+    hide(m_ovBig);
+    lv_label_set_text_fmt(m_ovLine1, ICON_TROPHY " %lu     " ICON_DROP " %lu", (unsigned long)m_best,
+                          (unsigned long)m_dropsTotal);
+    hide(m_ovLine2);
+    lv_label_set_text(m_ovHint, "Tippen zum Starten");
+    setOverlay(true, false);
+    hide(m_score);
+    render();
+}
+
 void HopTowerApp::start() {
+    if (m_state != State::Ready) showReady();
     m_state = State::Running;
-    lv_obj_add_flag(m_title, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(m_hint, LV_OBJ_FLAG_HIDDEN);
+    setOverlay(false, false);
+    show(m_score);
+    updateScore();
+    scheduleClose(1);
     ui::setSwipeLocked(true);
     lv_timer_resume(m_timer);
 }
 
 void HopTowerApp::stop(bool crashed) {
-    if (m_state != State::Running) return;
-    lv_timer_pause(m_timer);
+    if (m_state != State::Running && m_state != State::Dying) return;
     ui::setSwipeLocked(false);
 
-    bool record = m_points > m_best_;
-    if (record) {
-        m_best_ = m_points;
-        settings::putU32(KEY_BEST, m_best_);
+    if (m_points > m_best) {
+        m_best = m_points;
+        m_newRecord = true;
+        settings::putU32(KEY_BEST, m_best);
     }
-    if (!crashed) {
-        m_state = State::Ready;
+    if (m_drops) settings::putU32(KEY_DROPS, m_dropsTotal);
+
+    if (!crashed) {  // Kachel verlassen / Display aus -> still zurücksetzen
         showReady();
         return;
     }
-
-    m_state  = State::Over;
-    m_overAt = millis();
+    m_state = State::Dying;  // erst zerlaufen lassen, dann Game-Over-Anzeige
+    m_dying = 36;
     haptics::failure();
-    lv_label_set_text(m_title, record ? "Neuer Rekord!" : "Zu heiß!");
-    lv_obj_align(m_title, LV_ALIGN_CENTER, 0, -50);
-    lv_label_set_text_fmt(m_hint, "Stockwerk %lu  ·  Tippen", (unsigned long)m_points);
-    lv_obj_align(m_hint, LV_ALIGN_CENTER, 0, -22);
-    lv_obj_clear_flag(m_title, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(m_hint, LV_OBJ_FLAG_HIDDEN);
-    updateScore();
 }
 
-// -----------------------------------------------------------------------------
+void HopTowerApp::showOver() {
+    m_state = State::Over;
+    m_overAt = millis();
+    lv_label_set_text(m_ovTitle, "Game Over");
+    show(m_ovBig);
+    lv_label_set_text_fmt(m_ovBig, "%lu", (unsigned long)m_points);
+    if (m_newRecord) {
+        lv_label_set_text_fmt(m_ovLine1, ICON_TROPHY " %lu  ·  NEU!", (unsigned long)m_best);
+    } else {
+        lv_label_set_text_fmt(m_ovLine1, ICON_TROPHY " %lu", (unsigned long)m_best);
+    }
+    show(m_ovLine2);
+    lv_label_set_text_fmt(m_ovLine2, ICON_DROP " +%lu  (gesamt %lu)", (unsigned long)m_drops,
+                          (unsigned long)m_dropsTotal);
+    lv_label_set_text(m_ovHint, "Tippen für Neustart");
+    setOverlay(true, true);
+    hide(m_score);
+}
+
+// =============================================================================
+//  Eingabe & Physik
+// =============================================================================
+void HopTowerApp::tap() {
+    switch (m_mode) {
+        case Mode::Standing:
+            jump();
+            break;
+        case Mode::Air:
+            if (m_vy < 0) m_buffer = BUFFER_FRAMES;  // kurz vor der Landung -> danach springen
+            break;
+        case Mode::Stuck:
+            m_stuckP += PUSH_TAP;
+            m_wobV += 0.05f;  // sichtbares Drücken
+            break;
+    }
+}
+
+void HopTowerApp::jump() {
+    m_mode = Mode::Air;
+    m_from = m_stand;
+    m_vy = JUMP_V;
+    m_checked = false;
+    m_buffer = 0;
+    m_wob = -0.28f;  // Absprung: gestreckt
+    m_wobV = 0;
+}
+
+void HopTowerApp::land(int32_t i, bool pop) {
+    m_mode = Mode::Standing;
+    m_stand = i;
+    m_by = i * SPACING;
+    m_vy = 0;
+    m_wob = pop ? 0.42f : 0.32f;  // Landung: gestaucht, danach nachwabbeln
+    m_wobV = 0;
+
+    if (uint32_t(i) > m_points) {
+        m_points = i;
+        updateScore();
+        if (m_points % 10 == 0) haptics::success();
+        Floor& f = slotFor(i);
+        if (f.hasDrop && !f.dropTaken) {
+            f.dropTaken = true;
+            m_drops++;
+            m_dropsTotal++;
+            haptics::tap();
+        }
+        scheduleClose(i + 1);
+        m_trapped = false;
+    }
+    if (pop) {
+        m_pop = 14;
+        haptics::tap();
+    }
+    if (m_buffer) jump();
+}
+
+void HopTowerApp::physics() {
+    switch (m_mode) {
+        case Mode::Standing: {
+            // Eingesperrt? (Plattform darüber zu) -> Flüssigkeit holt ihn in ~2 s
+            if (!m_trapped && gapOf(slotFor(m_stand + 1)) < STUCK_MIN * J) {
+                m_trapped = true;
+                m_trapV = fmaxf(0.5f, (m_by - m_lava) / 100.0f);
+            }
+            break;
+        }
+        case Mode::Air: {
+            float prev = m_by;
+            m_vy -= GRAVITY;
+            m_by += m_vy;
+            int32_t next = m_from + 1;
+            Floor& f = slotFor(next);
+            float under = next * SPACING - T;
+
+            if (m_vy > 0 && !m_checked && prev + J <= under && m_by + J > under) {
+                m_checked = true;
+                float gap = gapOf(f);
+                if (gap >= J) {
+                    f.passed = true;  // sauber durch
+                } else if (gap >= STUCK_MIN * J) {
+                    m_mode = Mode::Stuck;  // eingeklemmt
+                    m_stuckP = 0;
+                    m_vy = 0;
+                    break;
+                } else {
+                    m_by = under - J;  // Kopfstoß -> abprallen
+                    m_vy = -1.5f;
+                    haptics::tap();
+                }
+            }
+            if (f.passed && m_by >= next * SPACING) f.fast = true;  // hinter ihm zu
+
+            if (m_vy <= 0) {
+                int32_t m = int32_t(floorf(prev / SPACING));
+                if (m >= 0 && prev >= m * SPACING && m_by < m * SPACING) land(m, false);
+            }
+            if (m_buffer) m_buffer--;
+            break;
+        }
+        case Mode::Stuck: {
+            m_stuckP = fmaxf(0.0f, m_stuckP - PUSH_SLIP);
+            if (m_stuckP >= 1.0f) {
+                Floor& f = slotFor(m_from + 1);
+                f.passed = f.fast = true;
+                land(m_from + 1, true);
+            }
+            break;
+        }
+    }
+}
+
+// =============================================================================
 //  Spielschleife
-// -----------------------------------------------------------------------------
+// =============================================================================
 void HopTowerApp::step() {
     if (display::isAsleep()) {
-        stop(false);
+        if (m_state == State::Running || m_state == State::Dying) stop(false);
+        lv_timer_pause(m_timer);
         return;
     }
     m_frame++;
 
-    // Lücken wandern (an den Rändern abprallen)
-    int32_t base = int32_t(floorf(m_cam / SPACING));
-    for (int32_t i = base; i < base + SLOTS; i++) {
-        if (i < 0) continue;
-        Floor& f = slotFor(i);
-        if (f.gapW <= 0) continue;
-        if (f.closed) {  // Hälften fahren zusammen
-            float s = min(f.gapW, 6.0f);
-            f.gapX += s / 2;
-            f.gapW -= s;
-            continue;
-        }
-        f.gapX += f.gapV;
-        if (f.gapX < 0) { f.gapX = 0; f.gapV = -f.gapV; }
-        if (f.gapX > W - f.gapW) { f.gapX = W - f.gapW; f.gapV = -f.gapV; }
+    // Squash & Stretch: gedämpfte Feder
+    m_wobV += -0.3f * m_wob - 0.2f * m_wobV;
+    m_wob += m_wobV;
+
+    if (m_state == State::Ready) {
+        if (m_frame % 100 == 0) m_wobV += 0.12f;  // wabbelt im Startbildschirm
+        render();
+        return;
+    }
+    if (m_state == State::Over) {
+        render();
+        return;
+    }
+    if (m_state == State::Dying) {
+        m_lava += 0.4f;
+        if (--m_dying == 0) showOver();
+        render();
+        return;
     }
 
-    // Physik
-    if (m_stand < 0) {
-        float prev = m_py;
-        m_vy -= GRAVITY;
-        m_py += m_vy;
+    updateFloors();
+    physics();
 
-        if (m_vy > 0) {
-            // Nach oben: Kopf trifft die Unterkante des nächsten Balkens?
-            int32_t j = int32_t(floorf((prev + D) / SPACING)) + 1;  // nächster Balken über dem Kopf
-            float bottom = j * SPACING - BAR_H;
-            if (prev + D <= bottom && m_py + D > bottom) {
-                if (!insideGap(slotFor(j))) {
-                    m_py = bottom - D;  // Kopfstoß: abprallen
-                    m_vy = -1.0f;
-                    haptics::tap();
-                }
-            }
-        } else {
-            // Nach unten: auf dem Balken darunter landen (der ist zu – wir kamen ja durch)
-            int32_t j = int32_t(floorf(prev / SPACING));
-            float top = j * SPACING;
-            if (j >= 0 && prev >= top && m_py < top) {
-                m_py = top;
-                m_vy = 0;
-                m_stand = j;
-                m_squash = 8;
-                if (uint32_t(j) > m_points) {
-                    m_points = j;
-                    if (m_points % 10 == 0) haptics::success();
-                    updateScore();
-                }
-                if (m_jumpBuffer) {
-                    m_vy = JUMP_V;
-                    m_stand = -1;
-                    m_jumpBuffer = 0;
-                }
-            }
-        }
-    }
-    // Komplett über einem Balken -> der schließt sich hinter dem Tropfen
-    if (m_stand < 0) {
-        int32_t j = int32_t(floorf(m_py / SPACING));
-        if (j >= 1) {
-            Floor& f = slotFor(j);
-            if (!f.closed && f.gapW > 0) f.closed = true;
-        }
-    }
-    if (m_jumpBuffer) m_jumpBuffer--;
-    if (m_squash) m_squash--;
+    // Flüssigkeit: Grundtempo steigt, Gummiband bei großem Vorsprung, schnell wenn eingesperrt
+    float v = fminf(0.95f, 0.30f + 0.012f * m_points);
+    float lead = m_by - m_lava;
+    if (lead > 2.2f * SPACING) v += (lead - 2.2f * SPACING) * 0.015f;
+    if (m_trapped) v = fmaxf(v, m_trapV);
+    m_lava += v;
+    if (m_lava < m_cam - 8) m_lava = m_cam - 8;  // immer knapp sichtbar
 
-    // Kamera folgt weich (nach oben schneller als nach unten)
-    float target = (m_stand >= 0 ? m_stand * SPACING : m_py) - CAM_OFFSET;
-    float k = target > m_cam ? 0.12f : 0.06f;
-    m_cam += (target - m_cam) * k;
+    // Kamera: nur nach oben, weich
+    float target = m_stand * SPACING - CAM_OFF;
+    if (target > m_cam) m_cam += (target - m_cam) * 0.1f;
 
-    // Lava steigt – nie mehr als knapp unter dem Bild, damit Druck bleibt
-    float speed = min(LAVA_MAX, LAVA_START + m_points * 0.012f);
-    m_lavaH += speed;
-    if (m_lavaH < m_cam - 30) m_lavaH = m_cam - 30;
-
-    if (m_lavaH >= m_py + 4) {
+    if (m_lava >= m_by + 2) {
         render();
         stop(true);
         return;
@@ -344,78 +519,150 @@ void HopTowerApp::step() {
     render();
 }
 
-void HopTowerApp::render() {
-    auto screenY = [this](float worldH) { return lv_coord_t(H - (worldH - m_cam)); };
-
-    int32_t base = int32_t(floorf(m_cam / SPACING));
-    for (int32_t i = base; i < base + SLOTS; i++) {
-        if (i < 0) {  // unter dem Boden: Slot verstecken
-            Floor& f = m_floors[((i % SLOTS) + SLOTS) % SLOTS];
-            lv_obj_add_flag(f.left, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(f.right, LV_OBJ_FLAG_HIDDEN);
-            continue;
+// =============================================================================
+//  Darstellung
+// =============================================================================
+void HopTowerApp::drawGap(Floor& f, lv_coord_t y, float gap) {
+    if (!f.hinge || f.index <= 0) {
+        // Typ A: zwei Rechtecke, Fuge exakt senkrecht in der Mitte
+        hide(f.lineL);
+        hide(f.lineR);
+        lv_coord_t half = lv_coord_t((INNER - gap) / 2);
+        if (half <= 0) {
+            hide(f.rectL);
+            hide(f.rectR);
+            return;
         }
-        Floor& f = slotFor(i);
-        lv_coord_t y = screenY(i * SPACING);
-        lv_obj_clear_flag(f.left, LV_OBJ_FLAG_HIDDEN);
-        if (f.gapW <= 0) {
-            lv_obj_set_size(f.left, W, BAR_H);
-            lv_obj_set_pos(f.left, 0, y);
-            lv_obj_add_flag(f.right, LV_OBJ_FLAG_HIDDEN);
-            continue;
-        }
-        lv_coord_t gx = lv_coord_t(f.gapX);
-        lv_coord_t gw = lv_coord_t(f.gapW);
-        if (gx > 0) {
-            lv_obj_set_size(f.left, gx, BAR_H);
-            lv_obj_set_pos(f.left, 0, y);
-        } else {
-            lv_obj_add_flag(f.left, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (gx + gw < W) {
-            lv_obj_clear_flag(f.right, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_size(f.right, W - gx - gw, BAR_H);
-            lv_obj_set_pos(f.right, gx + gw, y);
-        } else {
-            lv_obj_add_flag(f.right, LV_OBJ_FLAG_HIDDEN);
-        }
+        show(f.rectL);
+        show(f.rectR);
+        lv_obj_set_size(f.rectL, half, lv_coord_t(T));
+        lv_obj_set_size(f.rectR, half, lv_coord_t(T));
+        lv_obj_set_pos(f.rectL, lv_coord_t(WALL), y);
+        lv_obj_set_pos(f.rectR, lv_coord_t(W - WALL) - half, y);
+        return;
     }
 
-    // Tropfen: beim Landen kurz breit gedrückt, im Sprung leicht gestreckt
-    lv_coord_t w = lv_coord_t(D), h = lv_coord_t(D);
-    if (m_squash) {
-        lv_coord_t s = m_squash > 4 ? 8 - m_squash : m_squash;  // 0..4..0
-        w += s;
-        h -= s;
-    } else if (m_stand < 0 && m_vy > 4) {
-        w -= 2;
-        h += 3;
-    }
-    lv_obj_set_size(m_player, w, h);
-    lv_obj_set_pos(m_player, lv_coord_t(PX) - (w - lv_coord_t(D)) / 2, screenY(m_py) - h);
-    // Augen schauen in Bewegungsrichtung
-    lv_coord_t look = m_vy > 1 ? -1 : (m_vy < -1 ? 2 : 0);
-    lv_obj_set_pos(m_eyes[0], w / 2 - 8, h / 2 - 6 + look);
-    lv_obj_set_pos(m_eyes[1], w / 2 + 1, h / 2 - 6 + look);
+    // Typ B: Hälften drehen um Scharniere an den Wänden
+    hide(f.rectL);
+    hide(f.rectR);
+    show(f.lineL);
+    show(f.lineR);
+    float c = 1.0f - gap / INNER;  // aus der Lücke zurückrechnen (gilt auch beim Einklemmen)
+    c = fmaxf(-1.0f, fminf(1.0f, c));
+    float s = sqrtf(1.0f - c * c);
+    float len = INNER / 2 - T / 2;
+    lv_coord_t hy = y + lv_coord_t(T / 2);
+    lv_coord_t dx = lv_coord_t(len * c), dy = lv_coord_t(len * s);
+    lv_coord_t pad = lv_coord_t(T);
 
-    // Lava
-    lv_coord_t ly = screenY(m_lavaH);
-    if (ly >= H) {
-        lv_obj_add_flag(m_lava, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(m_lavaTop, LV_OBJ_FLAG_HIDDEN);
+    // Linien-Objekt um die Punkte legen (Punkte relativ, nie negativ)
+    lv_coord_t lx = lv_coord_t(WALL + T / 2);
+    lv_obj_set_pos(f.lineL, lx - pad, hy - pad);
+    f.ptsL[0] = {pad, pad};
+    f.ptsL[1] = {lv_coord_t(pad + dx), lv_coord_t(pad + dy)};
+    lv_line_set_points(f.lineL, f.ptsL, 2);
+
+    lv_coord_t rx = lv_coord_t(W - WALL - T / 2);
+    lv_obj_set_pos(f.lineR, rx - dx - pad, hy - pad);
+    f.ptsR[0] = {lv_coord_t(pad + dx), pad};
+    f.ptsR[1] = {pad, lv_coord_t(pad + dy)};
+    lv_line_set_points(f.lineR, f.ptsR, 2);
+}
+
+void HopTowerApp::renderFloor(Floor& f) {
+    lv_coord_t y = lv_coord_t(H - (f.index * SPACING - m_cam));
+    if (f.index < 0 || y > H + 4 || y < -90) {
+        hide(f.rectL); hide(f.rectR); hide(f.lineL); hide(f.lineR); hide(f.drop);
+        return;
+    }
+    float gap = gapOf(f);
+    int32_t next = m_from + 1;
+    if (f.index == next && m_state == State::Running) {
+        if (m_mode == Mode::Stuck) gap = fmaxf(gap, SQUEEZE);                  // presst gegen den Würfel
+        else if (f.passed && m_by < next * SPACING) gap = fmaxf(gap, J + 2);   // gerade mittendrin
+    }
+    drawGap(f, y, gap);
+
+    if (f.hasDrop && !f.dropTaken) {
+        show(f.drop);
+        lv_coord_t bob = lv_coord_t(2.5f * sinf((m_frame + f.index * 7) * 0.12f));
+        lv_obj_set_pos(f.drop, lv_coord_t(CX) - 8, y - 38 + bob);
     } else {
-        lv_obj_clear_flag(m_lava, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(m_lavaTop, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_pos(m_lava, 0, ly);
-        lv_obj_set_height(m_lava, H - ly > 0 ? H - ly : 1);
-        // leichte Welle an der Oberkante
-        lv_obj_set_pos(m_lavaTop, lv_coord_t((m_frame / 3) % 8) - 4, ly - 2);
+        hide(f.drop);
     }
+}
+
+void HopTowerApp::render() {
+    int32_t base = int32_t(floorf(m_cam / SPACING)) - 1;
+    for (int32_t i = base; i < base + SLOTS; i++) {
+        if (i < 0) {
+            Floor& f = m_floors[((i % SLOTS) + SLOTS) % SLOTS];
+            hide(f.rectL); hide(f.rectR); hide(f.lineL); hide(f.lineR); hide(f.drop);
+            continue;
+        }
+        renderFloor(slotFor(i));
+    }
+
+    // Würfel
+    float w = J * (1 + m_wob), h = J * (1 - m_wob);
+    float by = m_by;
+    if (m_mode == Mode::Stuck && m_state == State::Running) {
+        // seitlich zusammengequetscht, schiebt sich mit jedem Tap höher
+        float gap = fmaxf(gapOf(slotFor(m_from + 1)), SQUEEZE);
+        w = fminf(J, gap);
+        h = fminf(J * 1.7f, J * J / w) * (1 - 0.3f * m_wob);
+        float under = (m_from + 1) * SPACING - T;
+        float b0 = under - h * 0.55f, b1 = (m_from + 1) * SPACING;
+        by = b0 + (b1 - b0) * m_stuckP;
+        m_by = by;
+    }
+    if (m_state == State::Dying || m_state == State::Over) {  // zerläuft in der Flüssigkeit
+        float k = m_state == State::Over ? 0 : m_dying / 36.0f;
+        w = J * (1.9f - 0.9f * k);
+        h = fmaxf(3.0f, J * k);
+        by = fminf(m_by, m_lava - 2);
+        lv_obj_set_style_bg_opa(m_jelly, lv_opa_t(255 * k), 0);
+    }
+    lv_coord_t jw = lv_coord_t(w), jh = lv_coord_t(h);
+    lv_coord_t jy = lv_coord_t(H - (by - m_cam)) - jh;
+    lv_obj_set_size(m_jelly, jw, jh);
+    lv_obj_set_pos(m_jelly, lv_coord_t(CX) - jw / 2, jy);
+    lv_coord_t look = m_vy > 2 ? -1 : (m_vy < -2 ? 1 : 0);
+    lv_coord_t eyeY = jh * 3 / 10 + look;
+    lv_obj_set_pos(m_eyes[0], jw / 2 - (jw > 16 ? 8 : 6), eyeY);
+    lv_obj_set_pos(m_eyes[1], jw / 2 + (jw > 16 ? 2 : 0), eyeY);
+
+    // Plopp: kleine Kreise fliegen auseinander
+    if (m_pop) {
+        m_pop--;
+        float r = (14 - m_pop) * 2.2f;
+        for (int i = 0; i < PARTICLES; i++) {
+            float a = i * (2 * float(M_PI) / PARTICLES) - float(M_PI) / 2;
+            show(m_part[i]);
+            lv_obj_set_pos(m_part[i], lv_coord_t(CX + cosf(a) * r) - 2, lv_coord_t(jy + jh / 2 + sinf(a) * r * 0.7f) - 2);
+            lv_obj_set_style_bg_opa(m_part[i], lv_opa_t(m_pop * 18), 0);
+        }
+        if (!m_pop) for (auto* p : m_part) hide(p);
+    }
+
+    // Flüssigkeit mit welliger Oberfläche
+    lv_coord_t ly = lv_coord_t(H - (m_lava - m_cam));
+    float phase = m_frame * 0.15f;
+    lv_coord_t colW = W / WAVE_COLS;
+    for (int i = 0; i < WAVE_COLS; i++) {
+        lv_coord_t top = ly + lv_coord_t(2.5f * sinf(phase + i * 0.55f));
+        if (top >= H) {
+            hide(m_wave[i]);
+            continue;
+        }
+        show(m_wave[i]);
+        lv_obj_set_pos(m_wave[i], i * colW, top);
+        lv_obj_set_height(m_wave[i], H - top);
+    }
+
 }
 
 void HopTowerApp::updateScore() {
     lv_label_set_text_fmt(m_score, "%lu", (unsigned long)m_points);
-    lv_obj_align(m_score, LV_ALIGN_TOP_RIGHT, -18, 12);
-    lv_label_set_text_fmt(m_best, ICON_TROPHY " %lu", (unsigned long)m_best_);
-    lv_obj_align(m_best, LV_ALIGN_TOP_LEFT, 18, 14);
+    lv_obj_align(m_score, LV_ALIGN_TOP_MID, 0, 8);
 }

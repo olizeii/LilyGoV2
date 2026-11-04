@@ -43,3 +43,4 @@
 #define ICON_NOTE           "\xEF\x89\x89"  // F249
 #define ICON_DIRECTIONS     "\xEF\x97\xAB"  // F5EB
 #define ICON_TRASH          "\xEF\x8B\xAD"  // F2ED
+#define ICON_DROP           "\xEF\x81\x83"  // F043 (Tropfen)

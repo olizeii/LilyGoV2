@@ -20,7 +20,12 @@ Y=4                  Info (Akku, Standort)
 ## Funktionen
 
 ### Hüpfturm (X=0, Y=0)
-Ein vertikales Endlos-Sprungspiel. Der türkise Tropfen klettert Stockwerk für Stockwerk nach oben. Jedes Stockwerk ist ein farbiger Balken mit einer Lücke, die hin- und herwandert. Tippen lässt ihn springen. Nur wer unter der Lücke abspringt, kommt durch, danach fährt der Balken hinter ihm zu. Wer daneben springt, prallt mit dem Kopf ab. Von unten steigt Lava, die mit jedem Stockwerk schneller wird, während die Lücken schmaler und flinker werden. Alle 10 Stockwerke gibt es Vibrationsfeedback, der Rekord wird im NVS gespeichert (`hop_hi`).
+Ein grüner Würfel springt in einem senkrechten Schacht Etage für Etage nach oben. Tippen oder die **Seitentaste** lässt ihn springen: senkrecht, mit fester Höhe, ohne Doppelsprung, mit 100 ms Eingabepuffer vor der Landung.
+* **Plattformen:** Jede Etage über dem Würfel ist zuerst offen und schließt sich 0,2–0,8 s nach seiner Landung darunter, je höher, desto schneller. Es gibt zwei Typen: **Schiebeplattformen** (Hälften fahren von den Wänden zur Mitte) und **Klappplattformen** (Hälften klappen an Wand-Scharnieren hoch). Eine geschlossene Plattform öffnet sich nie wieder.
+* **Kollision:** Ist die Lücke mindestens so breit wie der Würfel, kommt er durch. Bei 30–100 % wird er **eingeklemmt**, dann drückt ihn schnelles Tippen (≈ 6×) mit einem „Plopp“ heraus, ohne Tippen rutscht er zurück. Unter 30 % prallt er ab.
+* **Flüssigkeit:** Sie steigt pink und wellig von unten, wird mit der Höhe schneller und holt bei großem Vorsprung auf (Gummiband). Ist der Würfel eingesperrt, erreicht sie ihn in ~2 s.
+* **Squash & Stretch:** Beim Absprung gestreckt, bei der Landung gestaucht mit Nachwabbeln, beim Einklemmen schmal und hoch, bei Game Over zerläuft er.
+* **Punkte:** Score = geschaffte Etagen. Etwa jede 10. Etage schwebt ein **Tropfen**, der beim Durchspringen eingesammelt wird. Highscore (`hop_hi`) und Tropfen gesamt (`hop_drops`) bleiben im NVS gespeichert.
 
 ### Tic Tac Toe (X=0, Y=1)
 Du (✕, blau) spielst gegen die Uhr (◯, orange). Die KI rechnet per Minimax, macht aber zu 25 % einen Zufallszug und ist damit schlagbar. Wer anfängt, wechselt jede Runde. Die Gewinnlinie wird farbig hervorgehoben, dazu gibt es Vibrationsfeedback. Tippen startet die nächste Runde.

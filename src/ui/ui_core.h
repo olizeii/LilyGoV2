@@ -41,4 +41,7 @@ lv_obj_t* tileview();
 void setSwipeLocked(bool locked);
 bool isSwipeLocked();
 
+// Seitentaste an die sichtbare App geben. true = App hat sie verbraucht.
+bool dispatchButton();
+
 }  // namespace ui

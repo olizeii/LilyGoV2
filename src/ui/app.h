@@ -22,4 +22,8 @@ public:
     virtual void onShow() {}
     virtual void onHide() {}
     virtual void onTick() {}
+
+    // Seitentaste bei eingeschaltetem Display. true = verbraucht
+    // (sonst schaltet die Taste wie gewohnt das Display aus).
+    virtual bool onButton() { return false; }
 };

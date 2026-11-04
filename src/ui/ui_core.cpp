@@ -236,4 +236,8 @@ void setSwipeLocked(bool locked) {
     else        lv_obj_add_flag(s_tv, LV_OBJ_FLAG_SCROLLABLE);
 }
 
+bool dispatchButton() {
+    return s_current && s_current->app->onButton();
+}
+
 }  // namespace ui

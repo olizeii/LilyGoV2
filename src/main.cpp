@@ -84,8 +84,8 @@ void loop() {
 
     // Seitentaste: Display an/aus
     if (power::pollButtonPressed()) {
-        if (display::isAsleep()) wakeUp();
-        else                     display::sleep();
+        if (display::isAsleep())      wakeUp();
+        else if (!ui::dispatchButton()) display::sleep();  // z.B. Spiel: Taste = springen
     }
     if (display::consumeTouchWake()) wakeUp();
 
