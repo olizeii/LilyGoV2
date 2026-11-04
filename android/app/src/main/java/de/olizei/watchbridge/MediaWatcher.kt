@@ -83,6 +83,17 @@ class MediaWatcher(private val ctx: Context, private val bridge: Bridge) {
         handler.postDelayed(publishRunnable, 250)  // Metadaten + Status kommen oft kurz nacheinander
     }
 
+    /** Kurzbeschreibung für den KI-Assistenten, null = keine Medien-Session. */
+    fun describe(): String? {
+        val c = controller ?: return null
+        val meta = c.metadata ?: return null
+        val title = meta.getString(MediaMetadata.METADATA_KEY_TITLE) ?: return null
+        val artist = meta.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+        val playing = c.playbackState?.state == PlaybackState.STATE_PLAYING
+        return "\"$title\"" + (if (artist.isNotBlank()) " von $artist" else "") +
+            " in ${appLabel(c.packageName)} (" + (if (playing) "spielt" else "pausiert") + ")"
+    }
+
     fun publish(force: Boolean) {
         val c = controller
         val meta = c?.metadata

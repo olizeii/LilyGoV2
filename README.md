@@ -19,6 +19,14 @@ Y=4                  Info (Akku, Standort)
 
 ## Funktionen
 
+### KI-Assistent (lange auf ein Watchface drücken)
+Auf Digital, Analog oder Modern **lange drücken**. Es öffnet sich ein schwarzer Vollbildschirm mit einer leuchtenden Kugel: drei Farbkugeln, die additiv überlagert auf Lissajous-Bahnen kreisen und mit dem Mikrofonpegel wachsen. Jetzt einfach sprechen. Die Mitschrift erscheint live unter der Kugel. Wenn du fertig bist, erkennt das Handy die Pause von selbst, oder du **tippst auf die Kugel**. Dann pulsiert sie („Einen Moment …“), und danach wechselt die Ansicht zur **Antwort, die Wort für Wort erscheint**. Mit dem Mikro-Knopf unten rechts stellst du eine Anschlussfrage, mit ✕ oder der Seitentaste schließt du.
+* **Ablauf:** Das PDM-Mikrofon nimmt mit 16 kHz auf (Hochpass, automatische Verstärkung). Die Uhr komprimiert mit IMA-ADPCM auf 8 KB/s und streamt per BLE an WatchBridge. Das Handy erkennt die Sprache mit **Androids eigener Spracherkennung** (gratis, bevorzugt offline). Den Text beantwortet **Claude Opus 5.5** (Anthropic-API, Effort `low` für kurze Wartezeit), und die Antwort streamt zurück auf die Uhr.
+* **Aktionen:** Musik steuern (Play/Pause/Weiter/Lautstärke), TV/Beamer per IR, Dunkelmodus und Helligkeit, Uhr-Apps öffnen (Stundenplan, Karte, Notizen …), Timer auf der Uhr (vibriert und erscheint als Mitteilung), Notizen anlegen, Taschenlampe, Mitteilungen vorlesen, **Websuche** (Wetter, News …) und eigene Tasker-Befehle.
+* **Kontext:** Bei jeder Frage bekommt Claude automatisch Uhrzeit, Handy-Akku, Ort, die laufende Musik und den Stundenplan mit. Fragen wie „Was hab ich als Nächstes?“ gehen also ohne Werkzeug. Folgefragen innerhalb von 5 Minuten gehören zum selben Gespräch.
+* **Kurz halten:** Fine-Tuning ist nicht nötig. Der System-Prompt verlangt 1–3 kurze Sätze ohne Markdown für das kleine Display.
+* **Kosten:** Eine typische Frage kostet etwa 0,3–1 Cent, mit Websuche etwas mehr. Die App zeigt nach jeder Antwort die Token und die Kosten an. In der Anthropic-Konsole am besten ein Monatslimit setzen.
+
 ### Hüpfturm (X=0, Y=0)
 Ein grüner Würfel springt in einem senkrechten Schacht Etage für Etage nach oben. Tippen oder die **Seitentaste** lässt ihn springen: senkrecht, mit fester Höhe, ohne Doppelsprung, mit 100 ms Eingabepuffer vor der Landung.
 * **Plattformen:** Jede Etage über dem Würfel ist zuerst ganz offen, die Hälften stecken in den Wänden. Kurz nach seiner Landung darunter (0,06–0,36 s) fahren sie **automatisch waagrecht herein**. Jede Plattform ist anders schnell: Meist braucht sie nur 40–70 % der Schließzeit aus der Kurve, ab und zu (1 von 4) schließt sie im aktuellen Tempo (90–110 %). Kürzer als 0,24 s wird es nie. Ist die Plattform beim Herunterfallen noch offen, fällt der Würfel **zurück auf die alte Etage** und kann es nochmal versuchen, solange die Zeit reicht. Die Fuge in der Mitte ist senkrecht. Eine geschlossene Plattform öffnet sich nie wieder.
@@ -99,12 +107,15 @@ Unter `android/` liegt die Kotlin-App (Jetpack Compose, Android 12+). Sie hält 
 | Notizen         | In der App / „Teilen“ aus anderen Apps |
 | Standort/Karte  | `LocationManager` (Fused), Ortsname per Geocoder, Kartenkacheln von CARTO |
 | Navigation      | Mitteilung von Google Maps |
+| KI-Assistent    | Android-`SpeechRecognizer` (Audio von der Uhr über `EXTRA_AUDIO_SOURCE`) + Claude-API (offizielles `anthropic-java`-SDK) |
 
 **Einrichten:**
 1. Bauen: `cd android && ./gradlew assembleRelease`. Die APK liegt dann unter `android/app/build/outputs/apk/release/app-release.apk`. Am Handy installieren (unbekannte Quellen erlauben).
 2. Die App öffnen und **„Verbindung aktiv“** einschalten. Unter *Berechtigungen* alles auf ✓ bringen: Bluetooth, Mitteilungszugriff, Standort („Immer“) und Akku nicht einschränken.
 3. Bei *WebUntis* den Server eintragen (z.B. `nessa.webuntis.com`, steht in der Adresszeile von webuntis.com), dazu den Schulnamen wie beim Login, Benutzer und Passwort. Dann **Speichern & laden**.
 4. Bei *Ray-Ban Meta* die Brille auswählen, falls sie nicht automatisch erkannt wird.
+5. **KI-Assistent:** Unter [console.anthropic.com](https://console.anthropic.com) einen API-Schlüssel anlegen. Das ist ein eigenes Konto mit Guthaben, das Claude-Abo gilt dort nicht. Den Schlüssel bei *KI-Assistent* eintragen und mit **Fragen** testen. Unter *Berechtigungen* das **Mikrofon** erlauben. Für die Offline-Erkennung in den Android-Einstellungen das deutsche Sprachpaket laden. Ohne das Paket nimmt die App automatisch die Online-Erkennung.
+   *Eigene Befehle* (eine Zeile pro Befehl, z.B. `licht_an: Wohnzimmerlicht einschalten`) löst die KI als Broadcast `de.olizei.watchbridge.WATCH` mit `cmd=licht_an` aus. Tasker oder MacroDroid reagieren darauf.
 
 **Tasker / MacroDroid** (optional):
 * Senden: Broadcast-Intent `de.olizei.watchbridge.SEND` mit Extra `msg` = `TOPIC|payload`, z.B. `SHORTCUT|1|Licht an`.
@@ -126,10 +137,12 @@ src/
   core/settings.cpp/h      Preferences/NVS (schreibt nur bei Änderung)
   core/data_store.cpp/h    Daten vom Handy + Pub/Sub + Protokoll-Parser (v2), Notizen im LittleFS
   core/activity.cpp/h      Tages-Schritte, Mitternachts-Reset, NVS-Sicherung, Ziel
+  core/voice.cpp/h         PDM-Mikrofon -> IMA-ADPCM -> BLE-Stream (eigener FreeRTOS-Task)
   ui/theme.cpp/h           Apple-Palette, Systemfarben, Styles, Icon-Helfer, Light/Dark
   ui/widgets.cpp/h         Gemeinsame Bausteine: Sheets, runde Tasten, Leerzustände
   ui/banner.cpp/h          Mitteilungs- und Navigationsbanner (weckt das Display)
   ui/map_screen.cpp/h      Vollbild-Karte + Navigationsanzeige
+  ui/ai_screen.cpp/h       KI-Assistent: Kugel-Animation, Mitschrift, Antwort, Aktionen
   ui/icons.h               Zusätzliche FontAwesome-Icons (UTF-8)
   ui/fonts/                Generierte Inter-Fonts (tools/gen_fonts.sh)
   ui/app.h                 WatchApp-Basisklasse (create/onShow/onHide/onTick)
@@ -155,6 +168,7 @@ android/                   WatchBridge (Kotlin, Compose)
     UntisSync.kt           WebUntis-Client
     MapProvider.kt         Standort + Kartenrenderer (LVGL INDEXED_4BIT)
     NotesRepo.kt           Notizen (JSON)
+    AiAssistant.kt         ADPCM-Decoder, Spracherkennung, Claude mit Werkzeugen, Text-Stream zur Uhr
     MainActivity.kt        Einstellungen im iOS-Stil
 ```
 
@@ -197,6 +211,11 @@ Jede Nachricht ist UTF-8-Text im Format `TOPIC|feld|feld|...`, höchstens 8 KB.
 | `NAV_END` | Navigation beendet |
 | `MAP_BEGIN\|240\|240\|28864`, `MAP\|<base64>`, `MAP_END` | Kartenbild (LVGL `INDEXED_4BIT`: 16×BGRA-Palette, dann 4 Bit/Pixel). Base64 in Stücken mit einer Länge, die durch 4 teilbar ist |
 | `SHORTCUT\|1\|Licht an` | Beschriftung von Shortcut-Widget 1/2 |
+| `AI_STATE\|listen` / `think` | Assistent: bereit / Sprache fertig erkannt (Uhr stoppt das Mikrofon) |
+| `AI_HEARD\|Text` | Mitschrift (Teilergebnisse und Endergebnis) |
+| `AI_TEXT\|Stück` | Nächstes Stück der Antwort (anhängen) |
+| `AI_DONE` / `AI_ERR\|Meldung` | Antwort komplett / Fehler |
+| `AI_ACT\|dark\|1`, `AI_ACT\|bright\|60`, `AI_ACT\|ir\|vol_up\|3`, `AI_ACT\|open\|untis`, `AI_ACT\|timer\|300\|Nudeln` | Aktionen der KI auf der Uhr |
 
 ### Uhr → Handy
 
@@ -208,9 +227,14 @@ Jede Nachricht ist UTF-8-Text im Format `TOPIC|feld|feld|...`, höchstens 8 KB.
 | `MAP_REQ\|16\|1` | Karte offen (Zoom, `1` = dunkel), wird alle 20 s erneuert |
 | `MAP_STOP` | Karte geschlossen |
 | `NOTIF_DISMISS\|key` | Mitteilung auf der Uhr gelöscht → auch am Handy entfernen |
+| `AI_START\|16000` | Assistent geöffnet, Audio folgt (Abtastrate) |
+| `AUD\|<base64>` | Audio-Block: `[seq][predictor i16 LE][index]` + ADPCM-Nibbles (low zuerst), jeder Block für sich decodierbar |
+| `AUD_END` | Aufnahme beendet |
+| `AI_CANCEL` | Assistent geschlossen / abgebrochen |
 
 ## Bekannte Grenzen
 
+* Der KI-Assistent braucht Internet am Handy und einen eigenen Claude-API-Schlüssel. Die Uhr antwortet nur mit Text, es gibt keine Sprachausgabe.
 * BLE läuft noch ohne Pairing bzw. Bonding, d.h. jedes Gerät in Reichweite kann schreiben.
 * Die Navigation hängt vom Aufbau der Google-Maps-Mitteilung ab. Das Manöver wird aus dem Anweisungstext erraten (Deutsch/Englisch).
 * Den Ray-Ban-Akku meldet Android nur, wenn die Brille den Bluetooth-Akkustand überträgt (HFP). Sonst steht dort „Nicht verbunden“.

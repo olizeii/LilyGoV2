@@ -16,6 +16,9 @@ public:
     const char* name() const override { return "Fernbedienung"; }
     void create(lv_obj_t* tile) override;
 
+    // Taste per Name senden (KI-Assistent): power, vol_up, vol_down, mute, ch_up, ch_down, input
+    static bool remote(const char* key, uint8_t times = 1);
+
 private:
     void send(Key key);
     void openBrandPicker();

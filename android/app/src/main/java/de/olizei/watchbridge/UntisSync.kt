@@ -56,6 +56,9 @@ class UntisSync(private val scope: CoroutineScope, private val prefs: Prefs, pri
         loop?.cancel()
     }
 
+    /** Zuletzt geladener Stundenplan im Uhr-Format (ohne "UNTIS|"), für den KI-Assistenten. */
+    val cachedPlan: String? get() = cachedMessage?.substringAfter('|', "")
+
     fun sendCached() {
         cachedMessage?.let { bridge.sendRaw(it) }
     }

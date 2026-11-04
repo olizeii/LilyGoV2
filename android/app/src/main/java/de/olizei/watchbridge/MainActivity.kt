@@ -42,6 +42,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -215,6 +217,7 @@ class MainActivity : ComponentActivity() {
         val locOk = has(Manifest.permission.ACCESS_FINE_LOCATION)
         val bgLocOk = has(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
         val battOk = batteryUnrestricted()
+        val micOk = has(Manifest.permission.RECORD_AUDIO)
         var serviceOn by remember { mutableStateOf(BridgeService.running || app.prefs.autoStart) }
 
         LazyColumn(
@@ -256,7 +259,7 @@ class MainActivity : ComponentActivity() {
             }
 
             // Berechtigungen
-            val missing = listOf(btOk, notifAccess, postOk, locOk, bgLocOk, battOk).count { !it }
+            val missing = listOf(btOk, notifAccess, postOk, locOk, bgLocOk, battOk, micOk).count { !it }
             item { Header(c, if (missing == 0) "Berechtigungen" else "Berechtigungen · $missing fehlen") }
             item {
                 Group(c) {
@@ -287,6 +290,10 @@ class MainActivity : ComponentActivity() {
                     PermRow(c, Icons.Default.BatteryFull, c.orange, "Akku nicht einschränken", "Verbindung bleibt im Hintergrund", battOk) {
                         requestBatteryUnrestricted()
                     }
+                    Divider(c)
+                    PermRow(c, Icons.Default.Mic, c.pink, "Mikrofon", "Spracherkennung für den KI-Assistenten", micOk) {
+                        permLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                    }
                 }
             }
 
@@ -297,6 +304,10 @@ class MainActivity : ComponentActivity() {
             // Untis
             item { Header(c, "WebUntis") }
             item { UntisGroup(c) }
+
+            // KI-Assistent
+            item { Header(c, "KI-Assistent") }
+            item { AiGroup(c) }
 
             // Notizen
             item {
@@ -465,6 +476,58 @@ class MainActivity : ComponentActivity() {
                             scope.launch { u.refreshNow() }
                         }
                     }) { Text("Speichern & laden") }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun AiGroup(c: Ios) {
+        val p = app.prefs
+        var key by remember { mutableStateOf(p.aiKey) }
+        var cmds by remember { mutableStateOf(p.aiCommands) }
+        var question by remember { mutableStateOf("") }
+        val status by app.ai.status.collectAsState()
+
+        Group(c) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RowIcon(Icons.Default.AutoAwesome, c.purple)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Lange auf ein Watchface drücken und sprechen. Antwort von Claude Opus 5.5, " +
+                        "Spracherkennung am Handy.", color = c.secondary, fontSize = 13.sp)
+                }
+                OutlinedTextField(
+                    key, { key = it }, label = { Text("Claude-API-Schlüssel (sk-ant-…)") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Schlüssel und Guthaben unter console.anthropic.com – dort am besten ein Monatslimit setzen. " +
+                    "Kurze Fragen kosten meist unter 1 Cent.", color = c.secondary, fontSize = 12.sp)
+                OutlinedTextField(
+                    cmds, { cmds = it }, label = { Text("Eigene Tasker-Befehle (optional)") },
+                    placeholder = { Text("licht_an: Wohnzimmerlicht einschalten") },
+                    minLines = 2, modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Ein Befehl pro Zeile. Die KI löst ihn als Intent \"${Bridge.ACTION_FROM_WATCH}\" mit Extra cmd aus.",
+                    color = c.secondary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton({
+                        p.aiKey = key; p.aiCommands = cmds
+                        Toast.makeText(this@MainActivity, "Gespeichert", Toast.LENGTH_SHORT).show()
+                    }) { Text("Speichern") }
+                }
+                OutlinedTextField(
+                    question, { question = it }, label = { Text("Testfrage tippen") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(status, color = c.secondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    TextButton({
+                        p.aiKey = key; p.aiCommands = cmds
+                        app.ai.askText(question.ifBlank { "Sag kurz Hallo." })
+                    }) { Text("Fragen") }
                 }
             }
         }

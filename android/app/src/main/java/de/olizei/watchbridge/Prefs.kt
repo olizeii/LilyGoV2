@@ -40,6 +40,16 @@ class Prefs(ctx: Context) {
         get() = sp.getString("untis_pw", "") ?: ""
         set(v) = sp.edit { putString("untis_pw", v) }
 
+    /** Claude-API-Schlüssel (console.anthropic.com). Bleibt nur auf dem Gerät. */
+    var aiKey: String
+        get() = sp.getString("ai_key", "") ?: ""
+        set(v) = sp.edit { putString("ai_key", v.trim()) }
+
+    /** Eigene Befehle für Tasker/MacroDroid, eine Zeile pro Befehl: "name: was er tut". */
+    var aiCommands: String
+        get() = sp.getString("ai_commands", "") ?: ""
+        set(v) = sp.edit { putString("ai_commands", v) }
+
     val untisConfigured: Boolean
         get() = untisServer.isNotBlank() && untisSchool.isNotBlank() && untisUser.isNotBlank()
 }

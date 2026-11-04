@@ -26,7 +26,10 @@ class Bridge(private val app: WatchBridgeApp) {
     private var lastNav = ""
 
     init {
-        app.link.onMessage = { msg -> app.scope.launch { handle(msg) } }
+        app.link.onMessage = { msg ->
+            // Sprach-Audio muss in Reihenfolge bleiben -> direkt im BLE-Thread, alles andere als Coroutine
+            if (!app.ai.onWatchMessage(msg)) app.scope.launch { handle(msg) }
+        }
         app.notes.onChanged = { syncNotes() }
     }
 

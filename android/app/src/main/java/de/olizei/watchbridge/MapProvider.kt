@@ -108,11 +108,16 @@ class MapProvider(private val ctx: Context, private val scope: CoroutineScope, p
         if (leasing() && (lastMapAt?.distanceTo(loc) ?: Float.MAX_VALUE) > 25f) renderSoon()
     }
 
+    /** Letzter bekannter Ortsname (für den KI-Assistenten). */
+    @Volatile var lastPlace: String = ""
+        private set
+
     private fun sendGps(loc: Location) {
         lastGpsSent = loc
         lastGpsMs = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             val place = placeName(loc)
+            if (place.isNotBlank()) lastPlace = place
             bridge.send("GPS", "%.5f,%.5f".format(Locale.US, loc.latitude, loc.longitude), place)
         }
     }

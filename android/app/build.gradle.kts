@@ -20,7 +20,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sideload-APK: mit dem Debug-Schlüssel signiert, damit es ohne Keystore installierbar ist
             signingConfig = signingConfigs.getByName("debug")
         }
@@ -47,4 +47,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("com.anthropic:anthropic-java:3.2.0")
 }

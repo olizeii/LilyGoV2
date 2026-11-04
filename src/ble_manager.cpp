@@ -10,6 +10,7 @@ static constexpr const char* TX_UUID      = "6E400003-B5A3-F393-E0A9-E50E24DCCA9
 
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server, ble_gap_conn_desc* desc) override {
+        BleManager::instance()._setConnHandle(desc->conn_handle);
         BleManager::instance()._setConnected(true);
         // Etwas entspanntere Intervalle (15-30 ms) -> weniger Strom, trotzdem flott
         server->updateConnParams(desc->conn_handle, 12, 24, 0, 400);
@@ -108,8 +109,21 @@ void BleManager::loop() {
     }
 }
 
+uint16_t BleManager::payloadSize() const {
+    if (!m_connected || m_connHandle == 0xFFFF) return 20;
+    uint16_t mtu = NimBLEDevice::getServer()->getPeerMTU(m_connHandle);
+    return mtu > 3 ? mtu - 3 : 20;
+}
+
+void BleManager::setFastLink(bool fast) {
+    if (!m_connected || m_connHandle == 0xFFFF) return;
+    if (fast) NimBLEDevice::getServer()->updateConnParams(m_connHandle, 6, 12, 0, 400);
+    else      NimBLEDevice::getServer()->updateConnParams(m_connHandle, 12, 24, 0, 400);
+}
+
 bool BleManager::send(const String& cmd, const String& arg) {
     if (!m_connected || !m_tx) return false;
+    std::lock_guard<std::mutex> lock(m_txMutex);
     String out = arg.length() ? cmd + "|" + arg : cmd;
     m_tx->setValue(reinterpret_cast<const uint8_t*>(out.c_str()), out.length());
     m_tx->notify();

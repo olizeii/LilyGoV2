@@ -42,9 +42,16 @@ public:
 
     bool isConnected() const { return m_connected; }
 
+    // Nutzdaten pro Notify (ATT-MTU - 3). 20 solange nichts ausgehandelt ist.
+    uint16_t payloadSize() const;
+
+    // Kürzere Verbindungsintervalle (7,5–15 ms) z.B. fürs Audio-Streaming.
+    void setFastLink(bool fast);
+
     // --- intern, von den NimBLE-Callbacks aufgerufen ---
     void _onRxChunk(const std::string& chunk);
     void _setConnected(bool c) { m_connected = c; }
+    void _setConnHandle(uint16_t h) { m_connHandle = h; }
     void _requestSync()        { m_syncRequested = true; }
 
 private:
@@ -56,6 +63,8 @@ private:
     NimBLECharacteristic* m_tx = nullptr;
 
     std::mutex m_mutex;
+    std::mutex m_txMutex;  // send() kommt auch aus dem Audio-Task
+    uint16_t m_connHandle = 0xFFFF;
     std::deque<std::string> m_inbox;
     std::string m_partial;  // nur im BLE-Task benutzt
 

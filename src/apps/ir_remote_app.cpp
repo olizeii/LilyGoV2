@@ -47,12 +47,14 @@ struct KeyCtx {
     IrRemoteApp::Key key;
 };
 KeyCtx s_ctx[IrRemoteApp::K_KEY_COUNT];
+IrRemoteApp* s_instance = nullptr;
 
 }  // namespace
 
 // -----------------------------------------------------------------------------
 void IrRemoteApp::create(lv_obj_t* tile) {
     s_ir.begin();
+    s_instance = this;
     m_brand = settings::getU8(KEY_BRAND, 0);
     if (m_brand >= BRAND_COUNT) m_brand = 0;
     const theme::Palette& p = theme::colors();
@@ -197,4 +199,18 @@ void IrRemoteApp::send(Key key) {
             break;
         }
     }
+}
+
+bool IrRemoteApp::remote(const char* key, uint8_t times) {
+    static const char* NAMES[K_KEY_COUNT] = {"power", "vol_up", "vol_down", "mute", "ch_up", "ch_down", "input"};
+    if (!s_instance) return false;
+    for (uint8_t k = 0; k < K_KEY_COUNT; k++) {
+        if (strcmp(key, NAMES[k]) != 0) continue;
+        for (uint8_t i = 0; i < times; i++) {
+            s_instance->send(Key(k));
+            if (i + 1 < times) delay(120);
+        }
+        return true;
+    }
+    return false;
 }

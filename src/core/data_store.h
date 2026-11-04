@@ -117,6 +117,10 @@ WatchData& data();
 void subscribe(Topic topic, Listener listener);
 void publish(Topic topic);
 
+// Zusätzliche Topics (z.B. KI-Assistent): Handler gibt true zurück, wenn er das Topic kennt.
+using TopicHandler = std::function<bool(const String& topic, const String& payload)>;
+void addHandler(TopicHandler handler);
+
 // Parst eine komplette Protokoll-Nachricht "TOPIC|payload" vom Handy.
 void handleMessage(const String& msg);
 

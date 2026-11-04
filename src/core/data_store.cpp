@@ -185,6 +185,10 @@ static void mapEnd() {
 
 // --- Parser --------------------------------------------------------------------
 
+static std::vector<TopicHandler> s_handlers;
+
+void addHandler(TopicHandler handler) { s_handlers.push_back(std::move(handler)); }
+
 void handleMessage(const String& msg) {
     int sep = msg.indexOf('|');
     String topic   = (sep < 0 ? msg : msg.substring(0, sep));
@@ -335,6 +339,8 @@ void handleMessage(const String& msg) {
         publish(Topic::Shortcuts);
 
     } else {
+        for (auto& h : s_handlers)
+            if (h(topic, payload)) return;
         log_w("Unbekanntes Topic: %s", topic.c_str());
     }
 }

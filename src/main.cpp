@@ -21,6 +21,7 @@
 #include "hal/haptics.h"
 #include "hal/power.h"
 #include "hal/rtc_clock.h"
+#include "ui/ai_screen.h"
 #include "ui/banner.h"
 #include "ui/map_screen.h"
 #include "ui/theme.h"
@@ -33,6 +34,11 @@ static constexpr uint32_t BATTERY_POLL_MS       = 10000;
 static void wakeUp() {
     ui::onWake();     // erst aufs Watchface springen ...
     display::wake();  // ... dann zeichnen + Licht an
+}
+
+static void sleepDisplay() {
+    aiscreen::close();  // Assistent nicht im Hintergrund weiterlaufen lassen
+    display::sleep();
 }
 
 static void pollWatchBattery() {
@@ -69,6 +75,7 @@ void setup() {
     ui::build();
     banner::begin();
     mapscreen::begin();
+    aiscreen::begin();
 
     BleManager& ble = BleManager::instance();
     ble.onMessage([](const String& msg) { store::handleMessage(msg); });
@@ -85,12 +92,13 @@ void loop() {
     // Seitentaste: Display an/aus
     if (power::pollButtonPressed()) {
         if (display::isAsleep())      wakeUp();
-        else if (!ui::dispatchButton()) display::sleep();  // z.B. Spiel: Taste = springen
+        else if (aiscreen::isOpen())    aiscreen::close();
+        else if (!ui::dispatchButton()) sleepDisplay();  // z.B. Spiel: Taste = springen
     }
     if (display::consumeTouchWake()) wakeUp();
 
     if (!display::isAsleep() && lv_disp_get_inactive_time(nullptr) > SCREEN_TIMEOUT_MS) {
-        display::sleep();
+        sleepDisplay();
     }
 
     pollWatchBattery();

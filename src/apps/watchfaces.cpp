@@ -6,6 +6,7 @@
 #include "core/data_store.h"
 #include "hal/rtc_clock.h"
 #include "ui/theme.h"
+#include "ui/ai_screen.h"
 #include "ui/map_screen.h"
 #include "ui/ui_core.h"
 
@@ -109,6 +110,7 @@ void registerColumn(uint8_t col) {
 //      (BT) [geh] 4.213  [bat] 82 % <- Caption, sekundär
 // =============================================================================
 void DigitalFace::create(lv_obj_t* tile) {
+    aiscreen::attach(tile);  // lange drücken = KI-Assistent
     m_date = theme::label(tile, theme::textHeadline());
     lv_obj_add_style(m_date, theme::textAccentAlt(), 0);
 
@@ -178,6 +180,7 @@ lv_obj_t* AnalogFace::makeLine(lv_obj_t* tile, lv_style_t* style, lv_coord_t wid
 }
 
 void AnalogFace::create(lv_obj_t* tile) {
+    aiscreen::attach(tile);  // lange drücken = KI-Assistent
     for (int i = 0; i < 60; i++) {
         float a    = i * 6.0f * DEG_TO_RAD;
         bool hour  = (i % 5) == 0;
@@ -266,6 +269,7 @@ void AnalogFace::onTick() {
 //  Y=2  ModernFace – gestapelte Ziffern (Stunde weiß, Minute orange) + Ring
 // =============================================================================
 void ModernFace::create(lv_obj_t* tile) {
+    aiscreen::attach(tile);  // lange drücken = KI-Assistent
     m_ring = lv_arc_create(tile);
     lv_obj_set_size(m_ring, 232, 232);
     lv_obj_center(m_ring);

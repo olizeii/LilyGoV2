@@ -17,6 +17,7 @@ class WatchBridgeApp : Application() {
     lateinit var notes: NotesRepo private set
     lateinit var link: BleLink private set
     lateinit var bridge: Bridge private set
+    lateinit var ai: AiAssistant private set
 
     override fun onCreate() {
         super.onCreate()
@@ -25,6 +26,7 @@ class WatchBridgeApp : Application() {
         notes = NotesRepo(this)
         link = BleLink(this, scope, prefs)
         bridge = Bridge(this)
+        ai = AiAssistant(this)
     }
 
     companion object {
