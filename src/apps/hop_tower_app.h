@@ -6,8 +6,10 @@
 //  nach oben, während von unten Flüssigkeit steigt.
 //
 //  * Über dem Würfel ist jede Etage zuerst ganz offen (Hälften stecken in den
-//    Wänden). 0,1–0,5 s nach der Landung darunter fahren sie automatisch
-//    waagrecht herein – jedes Mal unterschiedlich schnell (±40 %).
+//    Wänden). Kurz nach der Landung darunter fahren sie automatisch
+//    waagrecht herein – meist schneller als die Kurve, ab und zu im
+//    aktuellen Tempo. Ist die Plattform beim Runterfallen noch offen,
+//    fällt der Würfel zurück und kann es nochmal versuchen.
 //  * Tippen / Seitentaste = senkrecht springen (feste Höhe, kein Doppelsprung,
 //    100 ms Eingabepuffer vor der Landung).
 //  * Lücke beim Erreichen der Plattform:  >= Würfelbreite  -> durch
@@ -43,8 +45,6 @@ private:
         float t       = 0;       // Fortschritt beim Schließen (Frames)
         float dur     = 60;      // Schließdauer (Frames)
         float open    = 1;       // 1 = offen, 0 = zu
-        bool passed   = false;   // Würfel ist durch -> schnell zumachen
-        bool fast     = false;
         bool hasDrop  = false;
         bool dropTaken = false;
         lv_obj_t* rectL = nullptr;

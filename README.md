@@ -21,7 +21,7 @@ Y=4                  Info (Akku, Standort)
 
 ### Hüpfturm (X=0, Y=0)
 Ein grüner Würfel springt in einem senkrechten Schacht Etage für Etage nach oben. Tippen oder die **Seitentaste** lässt ihn springen: senkrecht, mit fester Höhe, ohne Doppelsprung, mit 100 ms Eingabepuffer vor der Landung.
-* **Plattformen:** Jede Etage über dem Würfel ist zuerst ganz offen, die Hälften stecken in den Wänden. 0,1–0,5 s nach seiner Landung darunter fahren sie **automatisch waagrecht herein**, jedes Mal unterschiedlich schnell (±40 % um den Wert der Kurve). Die Fuge in der Mitte ist senkrecht. Eine geschlossene Plattform öffnet sich nie wieder.
+* **Plattformen:** Jede Etage über dem Würfel ist zuerst ganz offen, die Hälften stecken in den Wänden. Kurz nach seiner Landung darunter (0,06–0,36 s) fahren sie **automatisch waagrecht herein**. Jede Plattform ist anders schnell: Meist braucht sie nur 45–80 % der Schließzeit aus der Kurve, ab und zu (1 von 4) schließt sie im aktuellen Tempo (90–110 %). Ist die Plattform beim Herunterfallen noch offen, fällt der Würfel **zurück auf die alte Etage** und kann es nochmal versuchen, solange die Zeit reicht. Die Fuge in der Mitte ist senkrecht. Eine geschlossene Plattform öffnet sich nie wieder.
 * **Schwierigkeit** (Tabelle `LEVELS` in `hop_tower_app.cpp`):
 
   | Etage | Schließzeit | Flüssigkeit |

@@ -200,7 +200,6 @@ bool HopTowerApp::onButton() {
 // =============================================================================
 void HopTowerApp::initFloor(Floor& f, int32_t i) {
     f.index = i;
-    f.passed = f.fast = false;
     f.t = 0;
     f.delay = 0;
     f.hasDrop = i >= 3 && rnd(0, 9) == 0;
@@ -212,8 +211,10 @@ void HopTowerApp::initFloor(Floor& f, int32_t i) {
     } else {
         f.st = Plat::Open;
         f.open = 1;
-        // Mal schneller, mal langsamer: ±40 % um den Wert der Kurve
-        f.dur = levelFor(i).closeSec * (1000.0f / FRAME_MS) * rnd(60, 140) / 100.0f;
+        // Meist deutlich schneller als die Kurve (45–80 %), ab und zu im
+        // aktuellen Tempo (90–110 %) – jede Plattform anders
+        float k = rnd(0, 3) == 0 ? rnd(90, 110) / 100.0f : rnd(45, 80) / 100.0f;
+        f.dur = levelFor(i).closeSec * (1000.0f / FRAME_MS) * k;
     }
 }
 
@@ -227,7 +228,7 @@ void HopTowerApp::scheduleClose(int32_t i) {
     Floor& f = slotFor(i);
     if (f.st != Plat::Open) return;
     f.st = Plat::Delay;
-    f.delay = uint16_t(rnd(6, 25));  // 0,1–0,5 s nach der Landung fahren sie los
+    f.delay = uint16_t(rnd(3, 18));  // 0,06–0,36 s nach der Landung fahren sie los
 }
 
 void HopTowerApp::updateFloors() {
@@ -236,9 +237,8 @@ void HopTowerApp::updateFloors() {
         if (i <= 0) continue;
         Floor& f = slotFor(i);
         if (f.st == Plat::Delay && --f.delay == 0) f.st = Plat::Closing;
-        if (f.fast && f.st != Plat::Closed) f.st = Plat::Closing;
         if (f.st != Plat::Closing) continue;
-        f.t += f.fast ? f.dur / 6 : 1;  // nach dem Durchspringen in ~6 Frames zu
+        f.t += 1;
         if (f.t >= f.dur) {
             f.t = f.dur;
             f.open = 0;
@@ -439,7 +439,7 @@ void HopTowerApp::physics() {
                 m_checked = true;
                 float gap = gapOf(f);
                 if (gap >= J) {
-                    f.passed = true;  // sauber durch
+                    // sauber durch – ob er oben landet, entscheidet sich beim Runterfallen
                 } else if (gap >= STUCK_MIN * J) {
                     m_mode = Mode::Stuck;  // eingeklemmt
                     m_stuckP = 0;
@@ -451,11 +451,13 @@ void HopTowerApp::physics() {
                     haptics::tap();
                 }
             }
-            if (f.passed && m_by >= next * SPACING) f.fast = true;  // hinter ihm zu
-
             if (m_vy <= 0) {
+                // Landen nur, wenn die Plattform schon weit genug zu ist –
+                // sonst fällt er durch die Lücke zurück auf die alte Etage
                 int32_t m = int32_t(floorf(prev / SPACING));
-                if (m >= 0 && prev >= m * SPACING && m_by < m * SPACING) land(m, false);
+                if (m >= 0 && prev >= m * SPACING && m_by < m * SPACING && gapOf(slotFor(m)) < J) {
+                    land(m, false);
+                }
             }
             if (m_buffer) m_buffer--;
             break;
@@ -463,8 +465,6 @@ void HopTowerApp::physics() {
         case Mode::Stuck: {
             m_stuckP = fmaxf(0.0f, m_stuckP - PUSH_SLIP);
             if (m_stuckP >= 1.0f) {
-                Floor& f = slotFor(m_from + 1);
-                f.passed = f.fast = true;
                 land(m_from + 1, true);
             }
             break;
@@ -558,7 +558,8 @@ void HopTowerApp::renderFloor(Floor& f) {
     int32_t next = m_from + 1;
     if (f.index == next && m_state == State::Running) {
         if (m_mode == Mode::Stuck) gap = fmaxf(gap, SQUEEZE);                  // presst gegen den Würfel
-        else if (f.passed && m_by < next * SPACING) gap = fmaxf(gap, J + 2);   // gerade mittendrin
+        else if (m_mode == Mode::Air && m_by < next * SPACING && m_by + J > next * SPACING - T)
+            gap = fmaxf(gap, J + 2);  // Würfel steckt gerade in der Lücke (hoch oder runter)
     }
     drawGap(f, y, gap);
 
