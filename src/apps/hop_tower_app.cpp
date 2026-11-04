@@ -38,6 +38,26 @@ constexpr float PUSH_SLIP = 0.007f;          // rutscht ohne Tippen zurück
 
 constexpr uint8_t BUFFER_FRAMES = 5;         // 100 ms
 
+// Schwierigkeitskurve (zum Feintunen): ab Etage -> Schließzeit, Flüssigkeit
+struct Level {
+    int32_t fromFloor;
+    float closeSec;   // Plattform schließt in ...
+    float lavaMul;    // Flüssigkeit relativ zum Grundtempo
+};
+constexpr Level LEVELS[] = {
+    {0, 1.2f, 1.0f},
+    {10, 0.9f, 1.3f},
+    {30, 0.7f, 1.6f},
+    {60, 0.5f, 2.0f},  // Minimum
+};
+constexpr float LAVA_BASE = 0.30f;           // px/Frame bei 1,0× (= 15 px/s)
+
+const Level& levelFor(int32_t floorIndex) {
+    const Level* l = &LEVELS[0];
+    for (const auto& x : LEVELS) if (floorIndex >= x.fromFloor) l = &x;
+    return *l;
+}
+
 int rnd(int lo, int hi) { return lo + int(esp_random() % uint32_t(hi - lo + 1)); }
 
 lv_obj_t* rect(lv_obj_t* parent, lv_coord_t w, lv_coord_t h, lv_coord_t radius) {
@@ -203,8 +223,7 @@ void HopTowerApp::initFloor(Floor& f, int32_t i) {
     } else {
         f.st = Plat::Open;
         f.open = 1;
-        // Anfangs gemütlich (1,8 s), später schnell (min. 0,5 s)
-        f.dur = fmaxf(26.0f, 90.0f * powf(0.965f, float(i)));
+        f.dur = levelFor(i).closeSec * (1000.0f / FRAME_MS);  // Sekunden -> Frames
     }
 }
 
@@ -499,8 +518,8 @@ void HopTowerApp::step() {
     updateFloors();
     physics();
 
-    // Flüssigkeit: Grundtempo steigt, Gummiband bei großem Vorsprung, schnell wenn eingesperrt
-    float v = fminf(0.95f, 0.30f + 0.012f * m_points);
+    // Flüssigkeit: Tempo laut Kurve, Gummiband bei großem Vorsprung, schnell wenn eingesperrt
+    float v = LAVA_BASE * levelFor(m_points).lavaMul;
     float lead = m_by - m_lava;
     if (lead > 2.2f * SPACING) v += (lead - 2.2f * SPACING) * 0.015f;
     if (m_trapped) v = fmaxf(v, m_trapV);

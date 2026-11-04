@@ -21,7 +21,15 @@ Y=4                  Info (Akku, Standort)
 
 ### Hüpfturm (X=0, Y=0)
 Ein grüner Würfel springt in einem senkrechten Schacht Etage für Etage nach oben. Tippen oder die **Seitentaste** lässt ihn springen: senkrecht, mit fester Höhe, ohne Doppelsprung, mit 100 ms Eingabepuffer vor der Landung.
-* **Plattformen:** Jede Etage über dem Würfel ist zuerst offen und schließt sich 0,2–0,8 s nach seiner Landung darunter, je höher, desto schneller. Es gibt zwei Typen: **Schiebeplattformen** (Hälften fahren von den Wänden zur Mitte) und **Klappplattformen** (Hälften klappen an Wand-Scharnieren hoch). Eine geschlossene Plattform öffnet sich nie wieder.
+* **Plattformen:** Jede Etage über dem Würfel ist zuerst offen und schließt sich 0,2–0,8 s nach seiner Landung darunter, je höher, desto schneller (siehe Tabelle). Es gibt zwei Typen: **Schiebeplattformen** (Hälften fahren von den Wänden zur Mitte) und **Klappplattformen** (Hälften klappen an Wand-Scharnieren hoch). Eine geschlossene Plattform öffnet sich nie wieder.
+* **Schwierigkeit** (Tabelle `LEVELS` in `hop_tower_app.cpp`):
+
+  | Etage | Schließzeit | Flüssigkeit |
+  |-------|-------------|-------------|
+  | 0–10  | 1,2 s       | 1,0× (15 px/s) |
+  | 10–30 | 0,9 s       | 1,3×        |
+  | 30–60 | 0,7 s       | 1,6×        |
+  | 60+   | 0,5 s       | 2,0×        |
 * **Kollision:** Ist die Lücke mindestens so breit wie der Würfel, kommt er durch. Bei 30–100 % wird er **eingeklemmt**, dann drückt ihn schnelles Tippen (≈ 6×) mit einem „Plopp“ heraus, ohne Tippen rutscht er zurück. Unter 30 % prallt er ab.
 * **Flüssigkeit:** Sie steigt pink und wellig von unten, wird mit der Höhe schneller und holt bei großem Vorsprung auf (Gummiband). Ist der Würfel eingesperrt, erreicht sie ihn in ~2 s.
 * **Squash & Stretch:** Beim Absprung gestreckt, bei der Landung gestaucht mit Nachwabbeln, beim Einklemmen schmal und hoch, bei Game Over zerläuft er.
