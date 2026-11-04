@@ -5,18 +5,17 @@
 //  Hüpfturm – ein Würfel springt in einem senkrechten Schacht Etage für Etage
 //  nach oben, während von unten Flüssigkeit steigt.
 //
-//  * Über dem Würfel ist jede Etage zuerst offen und schließt sich dann
-//    (Start 0,2–0,8 s nachdem er darunter gelandet ist). Zwei Typen:
-//      A  Schiebeplattform – Hälften fahren von den Wänden zur Mitte
-//      B  Klappplattform   – Hälften klappen an Wand-Scharnieren hoch
+//  * Über dem Würfel ist jede Etage zuerst ganz offen (Hälften stecken in den
+//    Wänden). 0,1–0,5 s nach der Landung darunter fahren sie automatisch
+//    waagrecht herein – jedes Mal unterschiedlich schnell (±40 %).
 //  * Tippen / Seitentaste = senkrecht springen (feste Höhe, kein Doppelsprung,
 //    100 ms Eingabepuffer vor der Landung).
 //  * Lücke beim Erreichen der Plattform:  >= Würfelbreite  -> durch
 //                                         30–100 %         -> eingeklemmt,
 //                                            schnell tippen zum Rausdrücken
 //                                         < 30 %           -> abgeprallt
-//  * Flüssigkeit steigt immer schneller, holt bei großem Vorsprung auf und
-//    braucht nur ~2 s, wenn der Würfel eingesperrt ist.
+//  * Flüssigkeit steigt schnell und lässt nie mehr als eine Etage Vorsprung;
+//    eingesperrt erreicht sie den Würfel in ~2 s.
 //  * Tropfen (≈ jede 10. Etage) werden beim Durchspringen eingesammelt.
 //    Highscore ("hop_hi") und Tropfen gesamt ("hop_drops") im NVS.
 // =============================================================================
@@ -39,7 +38,6 @@ private:
 
     struct Floor {
         int32_t index = -1;
-        bool hinge    = false;   // Typ B
         Plat st       = Plat::Open;
         uint16_t delay = 0;
         float t       = 0;       // Fortschritt beim Schließen (Frames)
@@ -51,10 +49,6 @@ private:
         bool dropTaken = false;
         lv_obj_t* rectL = nullptr;
         lv_obj_t* rectR = nullptr;
-        lv_obj_t* lineL = nullptr;
-        lv_obj_t* lineR = nullptr;
-        lv_point_t ptsL[2];
-        lv_point_t ptsR[2];
         lv_obj_t* drop = nullptr;
     };
 
@@ -92,8 +86,7 @@ private:
     lv_obj_t* m_eyes[2] = {};
     lv_obj_t* m_wave[WAVE_COLS] = {};
     lv_obj_t* m_part[PARTICLES] = {};
-    lv_style_t m_platStyle;   // Rechtecke
-    lv_style_t m_lineStyle;   // Klapp-Hälften
+    lv_style_t m_platStyle;   // Plattform-Hälften
 
     lv_obj_t* m_score = nullptr;
     lv_obj_t* m_overlay = nullptr;

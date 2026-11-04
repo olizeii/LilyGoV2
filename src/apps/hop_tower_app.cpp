@@ -29,8 +29,6 @@ constexpr float CAM_OFF = 68;                // Würfel steht im unteren Drittel
 constexpr float GRAVITY = 0.75f;
 const float JUMP_V      = sqrtf(2 * GRAVITY * (SPACING + 10));  // knapp über die nächste Plattform
 
-constexpr float GAP_A    = 64;               // Schiebeplattform: Lücke offen
-constexpr float HINGE_DEG = 40;              // Klappplattform: Winkel offen
 constexpr float STUCK_MIN = 0.30f;           // < 30 % der Würfelbreite -> abprallen
 constexpr float SQUEEZE   = 11;              // so schmal wird er eingeklemmt
 constexpr float PUSH_TAP  = 0.17f;           // ~6 Taps zum Rausdrücken
@@ -50,7 +48,9 @@ constexpr Level LEVELS[] = {
     {30, 0.7f, 1.6f},
     {60, 0.5f, 2.0f},  // Minimum
 };
-constexpr float LAVA_BASE = 0.30f;           // px/Frame bei 1,0× (= 15 px/s)
+// Flüssigkeit: bei 1,0× durchquert sie eine Etage in 1,8 s -> nie mehr als eine Etage Vorsprung
+constexpr float LAVA_BASE = SPACING / (1.8f * 1000.0f / FRAME_MS);   // ≈ 0,93 px/Frame
+constexpr float LAVA_LAG  = SPACING - T;     // höchstens so weit unter dem Würfel (= Etage darunter)
 
 const Level& levelFor(int32_t floorIndex) {
     const Level* l = &LEVELS[0];
@@ -84,19 +84,12 @@ void HopTowerApp::create(lv_obj_t* tile) {
     m_dropsTotal = settings::getU32(KEY_DROPS, 0);
 
     lv_style_init(&m_platStyle);
-    lv_style_init(&m_lineStyle);
-    lv_style_set_line_width(&m_lineStyle, T);
-    lv_style_set_line_rounded(&m_lineStyle, true);
 
     for (auto& f : m_floors) {
         f.rectL = rect(tile, 10, T, 3);
         f.rectR = rect(tile, 10, T, 3);
         lv_obj_add_style(f.rectL, &m_platStyle, 0);
         lv_obj_add_style(f.rectR, &m_platStyle, 0);
-        f.lineL = lv_line_create(tile);
-        f.lineR = lv_line_create(tile);
-        lv_obj_add_style(f.lineL, &m_lineStyle, 0);
-        lv_obj_add_style(f.lineR, &m_lineStyle, 0);
         f.drop = lv_label_create(tile);
         lv_obj_set_style_text_font(f.drop, &font_title, 0);
         lv_obj_set_style_text_color(f.drop, theme::tint(theme::Tint::Cyan), 0);
@@ -181,9 +174,7 @@ void HopTowerApp::create(lv_obj_t* tile) {
 void HopTowerApp::applyColors() {
     const theme::Palette& p = theme::colors();
     lv_style_set_bg_color(&m_platStyle, p.textSecondary);
-    lv_style_set_line_color(&m_lineStyle, p.textSecondary);
     lv_obj_report_style_change(&m_platStyle);
-    lv_obj_report_style_change(&m_lineStyle);
     for (auto* w : m_walls) lv_obj_set_style_bg_color(w, p.surfaceAlt, 0);
     lv_obj_set_style_bg_color(m_overlay, p.bg, 0);
 }
@@ -212,18 +203,17 @@ void HopTowerApp::initFloor(Floor& f, int32_t i) {
     f.passed = f.fast = false;
     f.t = 0;
     f.delay = 0;
-    f.hinge = rnd(0, 1) == 1;
     f.hasDrop = i >= 3 && rnd(0, 9) == 0;
     f.dropTaken = false;
     if (i <= 0) {  // Boden
         f.st = Plat::Closed;
         f.open = 0;
-        f.hinge = false;
         f.hasDrop = false;
     } else {
         f.st = Plat::Open;
         f.open = 1;
-        f.dur = levelFor(i).closeSec * (1000.0f / FRAME_MS);  // Sekunden -> Frames
+        // Mal schneller, mal langsamer: ±40 % um den Wert der Kurve
+        f.dur = levelFor(i).closeSec * (1000.0f / FRAME_MS) * rnd(60, 140) / 100.0f;
     }
 }
 
@@ -237,7 +227,7 @@ void HopTowerApp::scheduleClose(int32_t i) {
     Floor& f = slotFor(i);
     if (f.st != Plat::Open) return;
     f.st = Plat::Delay;
-    f.delay = uint16_t(rnd(10, 40));  // 0,2–0,8 s
+    f.delay = uint16_t(rnd(6, 25));  // 0,1–0,5 s nach der Landung fahren sie los
 }
 
 void HopTowerApp::updateFloors() {
@@ -261,10 +251,8 @@ void HopTowerApp::updateFloors() {
 
 // Freie Breite in der Mitte (für Kollision und Zeichnen)
 float HopTowerApp::gapOf(const Floor& f) const {
-    if (f.open <= 0) return 0;
-    if (!f.hinge) return GAP_A * f.open;
-    float a = HINGE_DEG * f.open * float(M_PI) / 180.0f;
-    return INNER * (1.0f - cosf(a));
+    // offen = Hälften stecken ganz in den Wänden
+    return f.open <= 0 ? 0 : INNER * f.open;
 }
 
 // =============================================================================
@@ -524,7 +512,10 @@ void HopTowerApp::step() {
     if (lead > 2.2f * SPACING) v += (lead - 2.2f * SPACING) * 0.015f;
     if (m_trapped) v = fmaxf(v, m_trapV);
     m_lava += v;
-    if (m_lava < m_cam - 8) m_lava = m_cam - 8;  // immer knapp sichtbar
+    // max. eine Etage Vorsprung (gemessen an der Etage, auf der er steht – nicht am Sprung)
+    float minLava = m_stand * SPACING - LAVA_LAG;
+    if (m_lava < minLava) m_lava = minLava;
+    if (m_lava < m_cam - 8) m_lava = m_cam - 8;              // immer knapp sichtbar
 
     // Kamera: nur nach oben, weich
     float target = m_stand * SPACING - CAM_OFF;
@@ -542,56 +533,25 @@ void HopTowerApp::step() {
 //  Darstellung
 // =============================================================================
 void HopTowerApp::drawGap(Floor& f, lv_coord_t y, float gap) {
-    if (!f.hinge || f.index <= 0) {
-        // Typ A: zwei Rechtecke, Fuge exakt senkrecht in der Mitte
-        hide(f.lineL);
-        hide(f.lineR);
-        lv_coord_t half = lv_coord_t((INNER - gap) / 2);
-        if (half <= 0) {
-            hide(f.rectL);
-            hide(f.rectR);
-            return;
-        }
-        show(f.rectL);
-        show(f.rectR);
-        lv_obj_set_size(f.rectL, half, lv_coord_t(T));
-        lv_obj_set_size(f.rectR, half, lv_coord_t(T));
-        lv_obj_set_pos(f.rectL, lv_coord_t(WALL), y);
-        lv_obj_set_pos(f.rectR, lv_coord_t(W - WALL) - half, y);
+    // Zwei Hälften fahren aus den Wänden herein, Fuge exakt senkrecht in der Mitte
+    lv_coord_t half = lv_coord_t((INNER - gap) / 2);
+    if (half <= 0) {
+        hide(f.rectL);
+        hide(f.rectR);
         return;
     }
-
-    // Typ B: Hälften drehen um Scharniere an den Wänden
-    hide(f.rectL);
-    hide(f.rectR);
-    show(f.lineL);
-    show(f.lineR);
-    float c = 1.0f - gap / INNER;  // aus der Lücke zurückrechnen (gilt auch beim Einklemmen)
-    c = fmaxf(-1.0f, fminf(1.0f, c));
-    float s = sqrtf(1.0f - c * c);
-    float len = INNER / 2 - T / 2;
-    lv_coord_t hy = y + lv_coord_t(T / 2);
-    lv_coord_t dx = lv_coord_t(len * c), dy = lv_coord_t(len * s);
-    lv_coord_t pad = lv_coord_t(T);
-
-    // Linien-Objekt um die Punkte legen (Punkte relativ, nie negativ)
-    lv_coord_t lx = lv_coord_t(WALL + T / 2);
-    lv_obj_set_pos(f.lineL, lx - pad, hy - pad);
-    f.ptsL[0] = {pad, pad};
-    f.ptsL[1] = {lv_coord_t(pad + dx), lv_coord_t(pad + dy)};
-    lv_line_set_points(f.lineL, f.ptsL, 2);
-
-    lv_coord_t rx = lv_coord_t(W - WALL - T / 2);
-    lv_obj_set_pos(f.lineR, rx - dx - pad, hy - pad);
-    f.ptsR[0] = {lv_coord_t(pad + dx), pad};
-    f.ptsR[1] = {pad, lv_coord_t(pad + dy)};
-    lv_line_set_points(f.lineR, f.ptsR, 2);
+    show(f.rectL);
+    show(f.rectR);
+    lv_obj_set_size(f.rectL, half, lv_coord_t(T));
+    lv_obj_set_size(f.rectR, half, lv_coord_t(T));
+    lv_obj_set_pos(f.rectL, lv_coord_t(WALL), y);
+    lv_obj_set_pos(f.rectR, lv_coord_t(W - WALL) - half, y);
 }
 
 void HopTowerApp::renderFloor(Floor& f) {
     lv_coord_t y = lv_coord_t(H - (f.index * SPACING - m_cam));
-    if (f.index < 0 || y > H + 4 || y < -90) {
-        hide(f.rectL); hide(f.rectR); hide(f.lineL); hide(f.lineR); hide(f.drop);
+    if (f.index < 0 || y > H + 4 || y < -20) {
+        hide(f.rectL); hide(f.rectR); hide(f.drop);
         return;
     }
     float gap = gapOf(f);
@@ -616,7 +576,7 @@ void HopTowerApp::render() {
     for (int32_t i = base; i < base + SLOTS; i++) {
         if (i < 0) {
             Floor& f = m_floors[((i % SLOTS) + SLOTS) % SLOTS];
-            hide(f.rectL); hide(f.rectR); hide(f.lineL); hide(f.lineR); hide(f.drop);
+            hide(f.rectL); hide(f.rectR); hide(f.drop);
             continue;
         }
         renderFloor(slotFor(i));
