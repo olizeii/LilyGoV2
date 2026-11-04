@@ -43,10 +43,10 @@ struct Level {
     float lavaMul;    // Flüssigkeit relativ zum Grundtempo
 };
 constexpr Level LEVELS[] = {
-    {0, 1.2f, 1.0f},
-    {10, 0.9f, 1.3f},
-    {30, 0.7f, 1.6f},
-    {60, 0.5f, 2.0f},  // Minimum
+    {0, 0.9f, 1.0f},
+    {10, 0.7f, 1.3f},
+    {30, 0.55f, 1.6f},
+    {60, 0.4f, 2.0f},  // Minimum
 };
 // Flüssigkeit: bei 1,0× durchquert sie eine Etage in 1,8 s -> nie mehr als eine Etage Vorsprung
 constexpr float LAVA_BASE = SPACING / (1.8f * 1000.0f / FRAME_MS);   // ≈ 0,93 px/Frame
@@ -211,10 +211,11 @@ void HopTowerApp::initFloor(Floor& f, int32_t i) {
     } else {
         f.st = Plat::Open;
         f.open = 1;
-        // Meist deutlich schneller als die Kurve (45–80 %), ab und zu im
-        // aktuellen Tempo (90–110 %) – jede Plattform anders
-        float k = rnd(0, 3) == 0 ? rnd(90, 110) / 100.0f : rnd(45, 80) / 100.0f;
-        f.dur = levelFor(i).closeSec * (1000.0f / FRAME_MS) * k;
+        // Meist deutlich schneller als die Kurve (40–70 %), ab und zu im
+        // aktuellen Tempo (90–110 %) – jede Plattform anders.
+        // Nie unter 0,24 s, damit man noch reagieren kann.
+        float k = rnd(0, 3) == 0 ? rnd(90, 110) / 100.0f : rnd(40, 70) / 100.0f;
+        f.dur = fmaxf(12.0f, levelFor(i).closeSec * (1000.0f / FRAME_MS) * k);
     }
 }
 
