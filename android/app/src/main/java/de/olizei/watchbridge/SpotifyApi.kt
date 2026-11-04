@@ -244,22 +244,44 @@ class SpotifyApi(private val ctx: Context, private val prefs: Prefs) {
     /** Spielt Songs ([uris]) oder einen Kontext (Album/Playlist/Künstler) auf dem Handy. */
     fun play(uris: List<String>, context: String?, shuffle: Boolean?): String {
         val device = phoneDevice() ?: run {
-            // Spotify läuft nicht -> starten und kurz warten, bis das Handy als Gerät auftaucht
-            startSpotify()
-            var d: String? = null
-            for (i in 0 until 16) {
+            // Handy taucht in Spotify Connect nur auf, solange die App wach ist -> über die
+            // Medien-Session wecken (klappt im Hintergrund), sonst die App starten
+            val woke = WatchBridgeApp.instance.bridge.media?.wakeSpotify() == true
+            if (!woke) startSpotify()
+            var d: Pair<String, Boolean>? = null
+            for (i in 0 until 20) {
                 Thread.sleep(500)
                 d = phoneDevice()
                 if (d != null) break
             }
-            d ?: throw ApiException("Spotify ist am Handy nicht geöffnet – bitte Spotify einmal starten")
+            d ?: throw ApiException("Spotify am Handy ist nicht erreichbar – bitte Spotify einmal öffnen")
         }
-        shuffle?.let { call("PUT", "/me/player/shuffle?state=$it&device_id=$device") }
+        // Schlafendes Gerät erst übernehmen, sonst nimmt Spotify den Befehl an und spielt trotzdem nichts
+        if (!device.second) {
+            call("PUT", "/me/player", JSONObject().put("device_ids", JSONArray(listOf(device.first))).put("play", false))
+            Thread.sleep(800)
+        }
+        val id = device.first
+        shuffle?.let { call("PUT", "/me/player/shuffle?state=$it&device_id=$id") }
         val body = JSONObject()
         if (context != null) body.put("context_uri", context) else body.put("uris", JSONArray(uris.take(50)))
-        call("PUT", "/me/player/play?device_id=$device", body)
-        Thread.sleep(1200)
-        return nowPlaying()?.let { "Läuft jetzt: $it" } ?: "Wiedergabe gestartet"
+        call("PUT", "/me/player/play?device_id=$id", body)
+        waitPlaying()?.let { return "Läuft jetzt: $it" }
+
+        // Spotify im Hintergrund darf unter Android oft nicht selbst losspielen -> kurz in den Vordergrund holen
+        Log.d(TAG, "Keine Wiedergabe – Spotify in den Vordergrund und nochmal")
+        if (!startSpotify()) return "Spotify hat den Befehl angenommen, spielt aber nicht – Spotify einmal öffnen"
+        Thread.sleep(2500)
+        call("PUT", "/me/player/play?device_id=$id", body)
+        return waitPlaying()?.let { "Läuft jetzt: $it" } ?: "Befehl gesendet, Spotify meldet aber noch keine Wiedergabe"
+    }
+
+    private fun waitPlaying(): String? {
+        for (i in 0 until 6) {
+            Thread.sleep(700)
+            nowPlaying()?.let { return it }
+        }
+        return null
     }
 
     fun queue(uri: String): String {
@@ -269,26 +291,28 @@ class SpotifyApi(private val ctx: Context, private val prefs: Prefs) {
 
     private fun nowPlaying(): String? = try {
         val t = call("GET", "/me/player/currently-playing")
-        if (t.isBlank()) null else JSONObject(t).optJSONObject("item")?.let { "${it.optString("name")} – ${artists(it)}" }
+        if (t.isBlank()) null else JSONObject(t).takeIf { it.optBoolean("is_playing") }
+            ?.optJSONObject("item")?.let { "${it.optString("name")} – ${artists(it)}" }
     } catch (_: Exception) { null }
 
-    /** Geräte-ID des Handys (Smartphone), sonst das aktive Gerät. */
-    private fun phoneDevice(): String? {
+    /** Geräte-ID des Handys in Spotify Connect, null = Spotify am Handy gerade nicht verbunden. */
+    private fun phoneDevice(): Pair<String, Boolean>? {
         val a = JSONObject(call("GET", "/me/player/devices")).optJSONArray("devices") ?: return null
         val list = (0 until a.length()).map { a.getJSONObject(it) }
+        Log.d(TAG, "Geräte: " + list.joinToString { "${it.optString("name")}/${it.optString("type")}/${it.optBoolean("is_active")}" })
+        // Nur das Handy – nie ungefragt auf Fernseher/PC abspielen
         val d = list.firstOrNull { it.optString("type").equals("Smartphone", true) }
-            ?: list.firstOrNull { it.optBoolean("is_active") }
-        return d?.optString("id")?.takeIf { it.isNotEmpty() }
+        val id = d?.optString("id")?.takeIf { it.isNotEmpty() } ?: return null
+        return id to d.optBoolean("is_active")
     }
 
-    private fun startSpotify() {
-        try {
-            ctx.packageManager.getLaunchIntentForPackage(MediaWatcher.SPOTIFY)?.let {
-                ctx.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Spotify starten", e)
-        }
+    private fun startSpotify(): Boolean = try {
+        val i = ctx.packageManager.getLaunchIntentForPackage(MediaWatcher.SPOTIFY)
+        if (i != null) ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        i != null
+    } catch (e: Exception) {
+        Log.w(TAG, "Spotify starten", e)
+        false
     }
 
     companion object {

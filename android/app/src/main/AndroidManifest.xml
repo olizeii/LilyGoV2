@@ -18,6 +18,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <queries>
+        <package android:name="com.spotify.music" />
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>

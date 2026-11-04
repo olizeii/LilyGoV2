@@ -2,6 +2,7 @@ package de.olizei.watchbridge
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
@@ -148,6 +149,31 @@ class MediaWatcher(private val ctx: Context, private val bridge: Bridge) {
             "vol_down" -> audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0)
         }
         schedulePublish()
+    }
+
+    /** Weckt Spotify über seine Medien-Session (geht auch aus dem Hintergrund). false = keine Session. */
+    fun wakeSpotify(): Boolean {
+        val s = try {
+            msm.getActiveSessions(component).firstOrNull { it.packageName == SPOTIFY }
+        } catch (_: SecurityException) { null }
+        if (s != null) {
+            // Wie die Play-Taste am Kopfhörer: Spotify setzt die letzte Wiedergabe fort und meldet sich bei Connect an
+            s.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY))
+            s.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_PLAY))
+            s.transportControls.play()
+            return true
+        }
+        // Keine Session (Spotify beendet): Play-Taste direkt an Spotifys Empfänger schicken
+        return try {
+            for (action in intArrayOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP)) {
+                ctx.sendBroadcast(Intent(Intent.ACTION_MEDIA_BUTTON).setComponent(
+                    ComponentName(SPOTIFY, "com.spotify.mediasession.mediasession.receiver.MediaButtonReceiver"),
+                ).putExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent(action, android.view.KeyEvent.KEYCODE_MEDIA_PLAY)))
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     companion object {
