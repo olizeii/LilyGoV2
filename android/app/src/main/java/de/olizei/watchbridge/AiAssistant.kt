@@ -266,7 +266,7 @@ class AiAssistant(private val app: WatchBridgeApp) {
             }
             fail(s, when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Nichts verstanden"
-                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Mikrofon in WatchBridge erlauben"
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> if (BridgeService.micReady) "Mikrofon in WatchBridge erlauben" else "WatchBridge einmal öffnen (Mikrofon nach Neustart)"
                 SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Kein Internet"
                 SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
                     "Deutsch-Sprachpaket fehlt"

@@ -113,6 +113,12 @@ class MainActivity : ComponentActivity() {
 
     private val app get() = WatchBridgeApp.instance
 
+    override fun onResume() {
+        super.onResume()
+        // App ist sichtbar -> nur jetzt gibt Android dem Dienst das Mikrofon auch für den Hintergrund frei
+        if (BridgeService.running) BridgeService.start(this, fromUi = true)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -201,12 +207,14 @@ class MainActivity : ComponentActivity() {
         var tick by remember { mutableIntStateOf(0) }
         val owner = LocalLifecycleOwner.current
         LaunchedEffect(owner) {
-            owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { tick++ }
+            owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                tick++
+            }
         }
 
         val btLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             tick++
-            if (has(Manifest.permission.BLUETOOTH_CONNECT) && app.prefs.autoStart) BridgeService.start(this@MainActivity)
+            if (has(Manifest.permission.BLUETOOTH_CONNECT) && app.prefs.autoStart) BridgeService.start(this@MainActivity, fromUi = true)
         }
         val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { tick++ }
         val bgLocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick++ }
@@ -243,7 +251,7 @@ class MainActivity : ComponentActivity() {
                         }
                         serviceOn = on
                         app.prefs.autoStart = on
-                        if (on && btOk) BridgeService.start(this@MainActivity) else if (!on) BridgeService.stop(this@MainActivity)
+                        if (on && btOk) BridgeService.start(this@MainActivity, fromUi = true) else if (!on) BridgeService.stop(this@MainActivity)
                     }
                     Divider(c)
                     var fwd by remember { mutableStateOf(app.prefs.forwardNotifications) }

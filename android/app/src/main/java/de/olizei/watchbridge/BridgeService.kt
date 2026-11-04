@@ -9,6 +9,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
@@ -39,10 +41,7 @@ class BridgeService : Service() {
                 setShowBadge(false)
             },
         )
-        ServiceCompat.startForeground(
-            this, NOTIF_ID, buildNotification("Verbinde …"),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
-        )
+        goForeground()
 
         val bridge = app.bridge
         bridge.battery = BatteryWatcher(this, bridge, app.prefs).also { it.start() }
@@ -68,13 +67,45 @@ class BridgeService : Service() {
                     BleLink.State.CONNECTING -> "Verbinde …"
                     BleLink.State.OFF -> "Bluetooth aus"
                 }
+                lastText = text
                 nm.notify(NOTIF_ID, buildNotification(text))
             }
         }
         running = true
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Start aus der sichtbaren App -> Android gewährt jetzt den Mikrofon-Zugriff auch für den Hintergrund
+        android.util.Log.d("BridgeService", "start fromUi=${intent?.getBooleanExtra(EXTRA_FROM_UI, false)}")
+        if (intent?.getBooleanExtra(EXTRA_FROM_UI, false) == true) {
+            goForeground()
+            micReady = true
+        }
+        return START_STICKY
+    }
+
+    /**
+     * Android erlaubt Mikrofon-Zugriff im Hintergrund nur einem Vordergrund-Dienst vom Typ "microphone",
+     * und der darf nur gestartet werden, während die App sichtbar ist. Beim Autostart (Boot) klappt
+     * das nicht – dann erst nur "connectedDevice", und beim nächsten Öffnen der App wird nachgerüstet.
+     */
+    private var lastText = "Verbinde …"
+
+    private fun goForeground() {
+        val notif = buildNotification(lastText)
+        val micOk = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (micOk) {
+            try {
+                ServiceCompat.startForeground(this, NOTIF_ID, notif,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                return
+            } catch (e: Exception) {
+                // App gerade nicht im Vordergrund
+                android.util.Log.w("BridgeService", "Mikrofon-Typ abgelehnt", e)
+            }
+        }
+        ServiceCompat.startForeground(this, NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+    }
 
     override fun onDestroy() {
         running = false
@@ -113,9 +144,15 @@ class BridgeService : Service() {
         private const val CHANNEL = "link"
         private const val NOTIF_ID = 1
         @Volatile var running = false
+        /** true = Mikrofon (Spracherkennung) funktioniert auch, wenn die App geschlossen ist. */
+        @Volatile var micReady = false
 
-        fun start(ctx: Context) {
-            ContextCompat.startForegroundService(ctx, Intent(ctx, BridgeService::class.java))
+        private const val EXTRA_FROM_UI = "from_ui"
+
+        /** [fromUi] = aus der sichtbaren App gestartet (nur dann gibt Android das Mikrofon frei). */
+        fun start(ctx: Context, fromUi: Boolean = false) {
+            ContextCompat.startForegroundService(ctx,
+                Intent(ctx, BridgeService::class.java).putExtra(EXTRA_FROM_UI, fromUi))
         }
 
         fun stop(ctx: Context) {
