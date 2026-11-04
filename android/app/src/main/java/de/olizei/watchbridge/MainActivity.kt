@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -308,6 +309,7 @@ class MainActivity : ComponentActivity() {
             // KI-Assistent
             item { Header(c, "KI-Assistent") }
             item { AiGroup(c) }
+            item { SpotifyGroup(c) }
 
             // Notizen
             item {
@@ -554,6 +556,46 @@ class MainActivity : ComponentActivity() {
                         p.aiKey = key; p.aiCommands = cmds
                         app.ai.askText(question.ifBlank { "Sag kurz Hallo." })
                     }) { Text("Fragen") }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun SpotifyGroup(c: Ios) {
+        val p = app.prefs
+        var clientId by remember { mutableStateOf(p.spClientId) }
+        val status by app.spotify.status.collectAsState()
+        val connected = app.spotify.connected && status.startsWith("Verbunden")
+
+        Group(c) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RowIcon(Icons.Default.MusicNote, c.green)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Spotify für die KI", color = c.text, fontSize = 17.sp)
+                        Text(status, color = if (connected) c.green else c.secondary, fontSize = 13.sp)
+                    }
+                }
+                if (!connected) {
+                    Text("Einmalig: auf developer.spotify.com/dashboard eine App anlegen (Web API), als Redirect URI " +
+                        "${SpotifyApi.REDIRECT} eintragen und die Client-ID hier einfügen.",
+                        color = c.secondary, fontSize = 12.sp)
+                    OutlinedTextField(
+                        clientId, { clientId = it }, label = { Text("Spotify Client-ID") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    if (connected) {
+                        TextButton({ app.spotify.logout() }) { Text("Trennen", color = c.red) }
+                    } else {
+                        TextButton({
+                            p.spClientId = clientId
+                            app.spotify.login(this@MainActivity)
+                        }) { Text("Mit Spotify verbinden") }
+                    }
                 }
             }
         }

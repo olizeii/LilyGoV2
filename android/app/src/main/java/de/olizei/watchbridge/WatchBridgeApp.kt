@@ -18,6 +18,7 @@ class WatchBridgeApp : Application() {
     lateinit var link: BleLink private set
     lateinit var bridge: Bridge private set
     lateinit var ai: AiAssistant private set
+    lateinit var spotify: SpotifyApi private set
 
     override fun onCreate() {
         super.onCreate()
@@ -26,6 +27,7 @@ class WatchBridgeApp : Application() {
         notes = NotesRepo(this)
         link = BleLink(this, scope, prefs)
         bridge = Bridge(this)
+        spotify = SpotifyApi(this, prefs)
         ai = AiAssistant(this)
     }
 

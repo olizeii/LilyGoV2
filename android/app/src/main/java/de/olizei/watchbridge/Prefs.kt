@@ -50,6 +50,15 @@ class Prefs(ctx: Context) {
         get() = sp.getString("ai_model", "claude-haiku-5-5") ?: "claude-haiku-5-5"
         set(v) = sp.edit { putString("ai_model", v) }
 
+    /** Spotify: Client-ID der eigenen Developer-App und Refresh-Token (PKCE). */
+    var spClientId: String
+        get() = sp.getString("sp_client", "") ?: ""
+        set(v) = sp.edit { putString("sp_client", v.trim()) }
+
+    var spRefresh: String
+        get() = sp.getString("sp_refresh", "") ?: ""
+        set(v) = sp.edit { putString("sp_refresh", v) }
+
     /** Eigene Befehle für Tasker/MacroDroid, eine Zeile pro Befehl: "name: was er tut". */
     var aiCommands: String
         get() = sp.getString("ai_commands", "") ?: ""

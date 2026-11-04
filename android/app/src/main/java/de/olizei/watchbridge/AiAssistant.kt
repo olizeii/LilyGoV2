@@ -473,16 +473,6 @@ class AiAssistant(private val app: WatchBridgeApp) {
         val list = mutableListOf(
             tool("media_control", "Steuert die laufende Musik/Medien am Handy (Spotify usw.).", listOf("action"),
                 "action" to enumProp("Befehl", MEDIA_ACTIONS)),
-            tool("play_music", "Startet in Spotify Musik per Suche: Song, Künstler, Album oder Playlist. Auch für vage Wünsche " +
-                "wie \"ruhigere Musik\" oder \"was zum Lernen\": dann eine passende Playlist (z.B. \"Chill Lofi\", \"Acoustic Calm\") " +
-                "oder einen passenden Künstler wählen. Will der Nutzer Musik, die er selbst hört, rufe vorher listening_history auf " +
-                "und wähle daraus etwas zur Stimmung Passendes. Will er Neues, wähle Künstler oder Songs, die zu seinem Geschmack " +
-                "passen, aber NICHT im Hörverlauf stehen. Antworte danach knapp, was jetzt läuft.", listOf("query", "kind"),
-                "query" to mapOf("type" to "string", "description" to "Suchbegriff: Songtitel, Künstlername, Albumname oder Playlist-Name"),
-                "kind" to enumProp("Art des Suchbegriffs", listOf("track", "artist", "album", "playlist", "any")),
-                "artist" to mapOf("type" to "string", "description" to "Künstler zu einem Song/Album (optional, macht die Suche genauer)")),
-            tool("listening_history", "Liefert den Hörverlauf des Nutzers in Spotify: Lieblingskünstler, meistgehörte und zuletzt " +
-                "gehörte Titel. Nutzen, um Musik nach seinem Geschmack auszuwählen.", emptyList()),
             tool("tv_remote", "Infrarot-Fernbedienung der Uhr für Fernseher/Beamer (Marke ist auf der Uhr eingestellt). " +
                 "ch_up/ch_down sind beim Optoma-Beamer Menü hoch/runter.", listOf("button"),
                 "button" to enumProp("Taste", IR_KEYS),
@@ -504,6 +494,25 @@ class AiAssistant(private val app: WatchBridgeApp) {
             tool("read_notifications", "Liest die aktuellen Mitteilungen am Handy (App, Titel, Text), z.B. für \"Was hat mir X geschrieben?\".",
                 emptyList()),
         )
+        if (app.spotify.connected) {
+            list += tool("spotify_taste", "Musikgeschmack des Nutzers aus Spotify: Top-Künstler, Top-Songs, zuletzt gehört und " +
+                "eigene Playlists, jeweils mit Spotify-URI. Aufrufen, bevor du Musik nach seinem Geschmack auswählst.", emptyList())
+            list += tool("spotify_search", "Sucht im Spotify-Katalog (max. 10 Treffer mit URI). Für Neues: nach Künstlern oder " +
+                "Songs suchen, die du passend findest. Für Stimmungen/Genres: nach Playlists suchen (z.B. \"calm acoustic\").",
+                listOf("query", "type"),
+                "query" to mapOf("type" to "string", "description" to "Suchbegriff; Filter wie artist:Name oder genre:jazz sind erlaubt"),
+                "type" to enumProp("Was gesucht wird", listOf("track", "artist", "album", "playlist")))
+            list += tool("spotify_play", "Spielt Musik in Spotify am Handy ab – entweder eine Liste von Song-URIs (für eine " +
+                "selbst zusammengestellte Auswahl, z.B. 10–20 ruhige Songs) oder einen Kontext (Playlist, Album oder Künstler). " +
+                "Verwende nur URIs aus spotify_taste oder spotify_search, niemals erfundene. Antworte danach knapp, was läuft.",
+                emptyList(),
+                "track_uris" to mapOf("type" to "array", "items" to mapOf("type" to "string"), "maxItems" to 50,
+                    "description" to "spotify:track:… URIs"),
+                "context_uri" to mapOf("type" to "string", "description" to "spotify:playlist:…, spotify:album:… oder spotify:artist:…"),
+                "shuffle" to mapOf("type" to "boolean", "description" to "Zufallswiedergabe an/aus (optional)"))
+            list += tool("spotify_queue", "Hängt einen Song an die Spotify-Warteschlange an (\"spiel danach …\").",
+                listOf("track_uri"), "track_uri" to mapOf("type" to "string"))
+        }
         val cmds = commands()
         if (cmds.isNotEmpty()) {
             list += tool("phone_command",
@@ -546,25 +555,22 @@ class AiAssistant(private val app: WatchBridgeApp) {
                 m.command(act)
                 "OK" to false
             }
-            "play_music" -> {
+            "spotify_search" -> {
                 val q = str(a, "query")?.takeIf { it.isNotEmpty() } ?: return bad("query")
-                val kind = str(a, "kind")?.takeIf { it in listOf("track", "artist", "album", "playlist", "any") } ?: "any"
-                val m = bridge.media ?: return "Medien-Steuerung nicht verfügbar (Mitteilungszugriff fehlt)" to true
-                val before = m.nowPlaying()
-                m.playFromSearch(q, kind, str(a, "artist")?.takeIf { it.isNotEmpty() })?.let { return it to true }
-                // Kurz warten, bis Spotify umgeschaltet hat, und melden, was läuft
-                var now: String? = null
-                for (i in 0 until 16) {
-                    Thread.sleep(250)
-                    now = m.nowPlaying()
-                    if (now != null && now != before && !now.endsWith("(pausiert)")) break
-                }
-                if (now != null && now != before) "Läuft jetzt: $now" to false
-                else "An Spotify gesendet, noch keine Bestätigung (startet vermutlich gleich)" to false
+                app.spotify.search(q, str(a, "type") ?: "track") to false
             }
-            "listening_history" -> {
-                val m = bridge.media ?: return "Medien-Zugriff nicht verfügbar" to true
-                m.historySummary() to false
+            "spotify_taste" -> app.spotify.taste() to false
+            "spotify_play" -> {
+                @Suppress("UNCHECKED_CAST")
+                val uris = ((a["track_uris"] as? List<Any?>) ?: emptyList()).mapNotNull { (it as? String)?.trim() }
+                    .filter { it.startsWith("spotify:track:") || it.startsWith("spotify:episode:") }
+                val ctx = str(a, "context_uri")?.takeIf { it.startsWith("spotify:") }
+                if (uris.isEmpty() && ctx == null) return bad("track_uris oder context_uri fehlt")
+                app.spotify.play(uris, ctx, bool(a, "shuffle")) to false
+            }
+            "spotify_queue" -> {
+                val u = str(a, "track_uri")?.takeIf { it.startsWith("spotify:") } ?: return bad("track_uri")
+                app.spotify.queue(u) to false
             }
             "tv_remote" -> {
                 val key = str(a, "button")?.takeIf { it in IR_KEYS } ?: return bad("button")
@@ -713,6 +719,10 @@ class AiAssistant(private val app: WatchBridgeApp) {
             Wenn der Nutzer etwas erledigt haben möchte, verwende das passende Werkzeug und bestätige danach knapp, was du
             getan hast. Passt kein Werkzeug, sag das ehrlich, statt etwas zu erfinden. Für aktuelle Informationen
             (Wetter, Nachrichten, Öffnungszeiten, Ergebnisse) nutze die Websuche und nenne nur das Wesentliche.
+            Musikwünsche (auch vage wie "ruhigere Musik", "was Neues", "was zum Lernen") erfüllst du mit den
+            Spotify-Werkzeugen: Für "meine Musik" wähle aus spotify_taste passende Songs oder Playlists; für "Neues"
+            suche Künstler/Songs, die zu seinem Geschmack passen, aber dort nicht vorkommen; spiele dann mehrere Songs
+            als Liste oder eine passende Playlist ab.
             Jede Nachricht beginnt mit einem automatisch erzeugten Kontext (Uhrzeit, Akku, Ort, Medien, Stundenplan);
             nutze ihn, wenn er hilft, aber zähle ihn nicht auf.
         """.trimIndent()
