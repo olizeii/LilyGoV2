@@ -26,10 +26,22 @@ void MediaApp::create(lv_obj_t* tile) {
     m_player = ui::box(tile);
     lv_obj_set_size(m_player, LV_PCT(100), LV_PCT(100));
 
-    // App-Name (z.B. "Spotify") in Grün
-    m_app = theme::label(m_player, theme::textCaption(), "");
-    lv_obj_set_style_text_color(m_app, theme::tint(theme::Tint::Spotify), 0);
-    lv_obj_align(m_app, LV_ALIGN_TOP_MID, 0, 14);
+    // Quellen-Leiste: aktuelle App (grün) + andere startbare Apps als "▶ Spotify"-Pillen
+    m_srcRow = ui::box(m_player);
+    lv_obj_set_size(m_srcRow, 230, 26);
+    lv_obj_set_flex_flow(m_srcRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(m_srcRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(m_srcRow, 6, 0);
+    lv_obj_add_flag(m_srcRow, LV_OBJ_FLAG_CLICKABLE);   // box() nimmt Klicks weg; Kinder brauchen sie
+    lv_obj_align(m_srcRow, LV_ALIGN_TOP_MID, 0, 8);
+
+    m_emptySrc = ui::box(tile);
+    lv_obj_set_size(m_emptySrc, 230, 34);
+    lv_obj_set_flex_flow(m_emptySrc, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(m_emptySrc, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(m_emptySrc, 8, 0);
+    lv_obj_add_flag(m_emptySrc, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(m_emptySrc, LV_ALIGN_BOTTOM_MID, 0, -14);
 
     m_title = theme::label(m_player, theme::textTitle(), "");
     lv_label_set_long_mode(m_title, LV_LABEL_LONG_SCROLL_CIRCULAR);
@@ -127,21 +139,87 @@ void MediaApp::command(const char* cmd) {
     }
 }
 
+namespace {
+
+// Pille für eine Quelle. current = gerade angezeigt (nur Text, grün), sonst antippbar "▶ Name".
+lv_obj_t* sourcePill(lv_obj_t* row, const String& name, bool current, bool big) {
+    const theme::Palette& p = theme::colors();
+    lv_obj_t* pill = lv_obj_create(row);
+    lv_obj_remove_style_all(pill);
+    lv_obj_set_size(pill, LV_SIZE_CONTENT, big ? 34 : 24);
+    lv_obj_set_style_pad_hor(pill, current ? 4 : 10, 0);
+    lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* l = lv_label_create(pill);
+    lv_obj_set_style_text_font(l, &font_caption, 0);
+    lv_obj_center(l);
+    if (current) {
+        lv_label_set_text(l, name.c_str());
+        lv_obj_set_style_text_color(l, theme::tint(theme::Tint::Spotify), 0);
+        lv_obj_clear_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+    } else {
+        String t = String(LV_SYMBOL_PLAY " ") + name;
+        lv_label_set_text(l, t.c_str());
+        lv_obj_set_style_text_color(l, p.text, 0);
+        lv_obj_set_style_bg_color(pill, p.surfaceAlt, 0);
+        lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(pill, p.separator, LV_STATE_PRESSED);
+        lv_obj_add_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_ext_click_area(pill, 6);
+        // Name am Objekt merken (kopiert, wird beim Löschen freigegeben)
+        char* copy = strdup(name.c_str());
+        lv_obj_add_event_cb(pill, [](lv_event_t* e) {
+            const char* n = static_cast<const char*>(lv_event_get_user_data(e));
+            haptics::tap();
+            store::sendToPhone("MEDIA", String("src|") + n);
+        }, LV_EVENT_CLICKED, copy);
+        lv_obj_add_event_cb(pill, [](lv_event_t* e) { free(lv_event_get_user_data(e)); }, LV_EVENT_DELETE, copy);
+    }
+    return pill;
+}
+
+}  // namespace
+
+void MediaApp::buildSources() {
+    const WatchData& d = store::data();
+    String cur = d.media.active ? (d.mediaCurrent.length() ? d.mediaCurrent : d.media.app) : String("");
+    String key = cur + "#" + String(d.media.active);
+    for (auto& s : d.mediaSources) key += "|" + s;
+    if (key == m_srcKey) return;
+    m_srcKey = key;
+
+    lv_obj_clean(m_srcRow);
+    lv_obj_clean(m_emptySrc);
+    if (d.media.active) sourcePill(m_srcRow, cur, true, false);
+    int others = 0;
+    for (auto& s : d.mediaSources) {
+        if (d.media.active && s == cur) continue;
+        if (others >= 2) break;
+        // Im Player nur eine Alternative (Platz), im leeren Zustand bis zu zwei
+        if (d.media.active && others >= 1) break;
+        sourcePill(d.media.active ? m_srcRow : m_emptySrc, s, false, !d.media.active);
+        others++;
+    }
+}
+
 void MediaApp::refresh() {
     const WatchData& d = store::data();
     const MediaState& m = d.media;
+    buildSources();
 
     if (!m.active) {
         lv_obj_add_flag(m_player, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(m_empty, LV_OBJ_FLAG_HIDDEN);
         lv_obj_t* sub = lv_obj_get_child(m_empty, 2);
-        ui::setText(sub, d.bleConnected ? "Starte Musik auf dem Handy" : "Handy nicht verbunden");
+        ui::setText(sub, !d.bleConnected ? "Handy nicht verbunden"
+                         : d.mediaSources.empty() ? "Starte Musik auf dem Handy" : "Weiter hören mit");
+        if (d.bleConnected) lv_obj_clear_flag(m_emptySrc, LV_OBJ_FLAG_HIDDEN);
+        else                lv_obj_add_flag(m_emptySrc, LV_OBJ_FLAG_HIDDEN);
         return;
     }
     lv_obj_clear_flag(m_player, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(m_empty, LV_OBJ_FLAG_HIDDEN);
-
-    ui::setText(m_app, m.app.c_str());
+    lv_obj_add_flag(m_emptySrc, LV_OBJ_FLAG_HIDDEN);
     ui::setText(m_title, m.title.length() ? m.title.c_str() : "Unbekannter Titel");
     ui::setText(m_artist, m.artist.c_str());
     ui::setText(m_playIcon, m.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);

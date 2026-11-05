@@ -7,6 +7,7 @@
 #include "apps/notes_app.h"
 #include "apps/placeholder_app.h"
 #include "apps/runner_app.h"
+#include "apps/stopwatch_app.h"
 #include "apps/tictactoe_app.h"
 #include "apps/untis_app.h"
 #include "apps/watchfaces.h"
@@ -24,7 +25,7 @@ static UntisApp    s_untis;
 static MediaApp    s_spotify;
 static MessagesApp s_messages;
 
-static PlaceholderApp s_shortcut1("Kurzbefehl 1", ICON_BOLT, Tint::Purple);
+static StopwatchApp s_stopwatch;
 static NotesApp s_notes;
 static PlaceholderApp s_shortcut2("Kurzbefehl 2", ICON_BOLT, Tint::Pink);
 
@@ -46,7 +47,7 @@ void registerAll() {
     ui::registerApp(2, 2, &s_messages);
 
     // X=3  Widgets & Notes
-    ui::registerApp(3, 0, &s_shortcut1);
+    ui::registerApp(3, 0, &s_stopwatch);
     ui::registerApp(3, 1, &s_notes);
     ui::registerApp(3, 2, &s_shortcut2);
 

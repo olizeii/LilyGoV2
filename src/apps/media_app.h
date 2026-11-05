@@ -1,4 +1,6 @@
 #pragma once
+#include <Arduino.h>
+
 #include "ui/app.h"
 
 // =============================================================================
@@ -17,6 +19,7 @@ private:
     void refresh();
     void updateProgress();
     void command(const char* cmd);
+    void buildSources();   // Quellen-Leiste (Spotify / YouTube …) neu aufbauen, wenn sich die Liste ändert
 
     lv_obj_t* m_empty    = nullptr;
     lv_obj_t* m_player   = nullptr;
@@ -27,4 +30,7 @@ private:
     lv_obj_t* m_posLabel = nullptr;
     lv_obj_t* m_durLabel = nullptr;
     lv_obj_t* m_playIcon = nullptr;
+    lv_obj_t* m_srcRow   = nullptr;   // oben im Player
+    lv_obj_t* m_emptySrc = nullptr;   // im leeren Zustand: "▶ Spotify"
+    String m_srcKey;
 };

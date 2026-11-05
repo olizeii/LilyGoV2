@@ -92,6 +92,9 @@ struct WatchData {
     int raybanBattery  = -1;
 
     MediaState media;
+    // Verfügbare Medien-Apps am Handy (z.B. "Spotify", "YouTube") + die gerade angezeigte
+    std::vector<String> mediaSources;
+    String mediaCurrent;
     String untisTitle;                  // z.B. "Heute · Di 4. Nov."
     std::vector<Lesson> untis;
     std::deque<PhoneMessage> messages;  // neueste zuerst

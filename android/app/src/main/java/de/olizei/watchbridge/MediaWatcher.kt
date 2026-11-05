@@ -11,6 +11,7 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import kotlinx.coroutines.launch
 
 /**
  * Liest die aktive Medien-Session (Spotify bevorzugt) und steuert sie.
@@ -66,10 +67,22 @@ class MediaWatcher(private val ctx: Context, private val bridge: Bridge) {
         }
     }
 
+    private var sessions: List<MediaController> = emptyList()
+    private var pinned: String? = null   // auf der Uhr gewählte Quelle (bis eine andere App losspielt)
+    private var lastSources = ""
+
+    /** Sessions, die als Quelle taugen (keine Telefon-/Bluetooth-Dienste). */
+    private fun usable(list: List<MediaController>) = list.filter { it.packageName !in IGNORED }
+
     private fun pick(list: List<MediaController>) {
-        val best = list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-            ?: list.firstOrNull { it.packageName == SPOTIFY }
-            ?: list.firstOrNull()
+        sessions = usable(list)
+        val playing = sessions.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+        if (playing != null && playing.packageName != pinned) pinned = null
+        val best = playing
+            ?: sessions.firstOrNull { it.packageName == pinned }
+            ?: sessions.firstOrNull { it.packageName == SPOTIFY && it.metadata != null }
+            ?: sessions.firstOrNull { it.metadata != null }
+            ?: sessions.firstOrNull()
         if (best?.sessionToken != controller?.sessionToken) {
             controller?.unregisterCallback(callback)
             controller = best
@@ -95,7 +108,53 @@ class MediaWatcher(private val ctx: Context, private val bridge: Bridge) {
             " in ${appLabel(c.packageName)} (" + (if (playing) "spielt" else "pausiert") + ")"
     }
 
+    /** Liste der Quellen für die Uhr: MEDIA_SRC|<aktuell>|<App1>|<App2>… (Spotify immer, wenn verbunden). */
+    private fun publishSources(force: Boolean) {
+        val labels = LinkedHashSet<String>()
+        controller?.let { labels += appLabel(it.packageName) }
+        sessions.forEach { labels += appLabel(it.packageName) }
+        if (WatchBridgeApp.instance.spotify.connected || isInstalled(SPOTIFY)) labels += appLabel(SPOTIFY)
+        val cur = controller?.let { appLabel(it.packageName) } ?: ""
+        val list = labels.take(3)
+        val key = cur + "|" + list.joinToString("|")
+        if (!force && key == lastSources) return
+        lastSources = key
+        bridge.send("MEDIA_SRC", *(listOf(cur) + list).map { it.replace('|', '/') }.toTypedArray())
+    }
+
+    private fun isInstalled(pkg: String) = try {
+        ctx.packageManager.getApplicationInfo(pkg, 0); true
+    } catch (_: Exception) { false }
+
+    /** Uhr hat eine Quelle angetippt: auf diese App umschalten und abspielen. */
+    private fun switchTo(label: String) {
+        val target = sessions.firstOrNull { appLabel(it.packageName).equals(label, true) }
+        if (target != null) {
+            pinned = target.packageName
+            if (target.sessionToken != controller?.sessionToken) {
+                controller?.unregisterCallback(callback)
+                controller = target
+                target.registerCallback(callback, handler)
+            }
+            target.transportControls.play()
+            publish(force = true)
+            return
+        }
+        // Spotify ohne Session (beendet) -> über die Web API auf dem Handy fortsetzen
+        if (label.equals(appLabel(SPOTIFY), true)) {
+            pinned = SPOTIFY
+            if (!wakeSpotify() && WatchBridgeApp.instance.spotify.connected) {
+                WatchBridgeApp.instance.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try { WatchBridgeApp.instance.spotify.resume() } catch (e: Exception) {
+                        android.util.Log.w("MediaWatcher", "Spotify fortsetzen", e)
+                    }
+                }
+            }
+        }
+    }
+
     fun publish(force: Boolean) {
+        publishSources(force)
         val c = controller
         val meta = c?.metadata
         if (c == null || meta == null) {
@@ -138,6 +197,11 @@ class MediaWatcher(private val ctx: Context, private val bridge: Bridge) {
 
     /** Befehle der Uhr: toggle, play, pause, next, prev, vol_up, vol_down */
     fun command(cmd: String) {
+        if (cmd.startsWith("src|")) {
+            switchTo(cmd.substringAfter('|').trim())
+            schedulePublish()
+            return
+        }
         val t = controller?.transportControls
         when (cmd.trim()) {
             "toggle" -> if (controller?.playbackState?.state == PlaybackState.STATE_PLAYING) t?.pause() else t?.play()
@@ -178,5 +242,6 @@ class MediaWatcher(private val ctx: Context, private val bridge: Bridge) {
 
     companion object {
         const val SPOTIFY = "com.spotify.music"
+        private val IGNORED = setOf("com.android.server.telecom", "com.android.bluetooth", "android")
     }
 }

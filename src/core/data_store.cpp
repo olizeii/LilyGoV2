@@ -231,6 +231,14 @@ void handleMessage(const String& msg) {
         m.rxMs    = millis();
         publish(Topic::Media);
 
+    } else if (topic == "MEDIA_SRC") {
+        // MEDIA_SRC|<aktuell>|<App1>|<App2>|<App3>
+        auto p = split(payload, '|', 4);
+        s_data.mediaCurrent = part(p, 0);
+        s_data.mediaSources.clear();
+        for (size_t i = 1; i < p.size(); i++) if (p[i].length()) s_data.mediaSources.push_back(p[i]);
+        publish(Topic::Media);
+
     } else if (topic == "MEDIA_OFF") {
         s_data.media = MediaState();
         publish(Topic::Media);

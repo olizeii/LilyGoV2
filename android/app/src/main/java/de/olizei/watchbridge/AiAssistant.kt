@@ -482,13 +482,19 @@ class AiAssistant(private val app: WatchBridgeApp) {
                 "brightness_percent" to mapOf("type" to "integer", "minimum" to 5, "maximum" to 100)),
             tool("open_watch_app", "Öffnet eine Ansicht auf der Uhr (schließt dabei den Assistenten).", listOf("app"),
                 "app" to enumProp("watchface, untis = Stundenplan, media = Musik, messages = Mitteilungen, notes = Notizen, " +
-                    "map = Karte, remote = TV-Fernbedienung, activity = Schritte, info = Akku/Status, hopturm/tictactoe/runner = Spiele",
+                    "map = Karte, remote = TV-Fernbedienung, activity = Schritte, info = Akku/Status, stopwatch = Stoppuhr, hopturm/tictactoe/runner = Spiele",
                     WATCH_APPS)),
             tool("set_timer", "Stellt einen Timer auf der Uhr; sie vibriert, wenn er abläuft.", listOf("seconds"),
                 "seconds" to mapOf("type" to "integer", "minimum" to 1, "maximum" to 86400),
                 "title" to mapOf("type" to "string", "description" to "Kurzer Name, z.B. \"Nudeln\"")),
-            tool("add_note", "Speichert eine Notiz in WatchBridge und zeigt sie auf der Uhr unter Notizen.", listOf("title", "text"),
-                "title" to mapOf("type" to "string"), "text" to mapOf("type" to "string")),
+            tool("notes", "Notizen des Nutzers (erscheinen auf der Uhr unter Notizen). list = alle Titel mit Inhalt lesen; " +
+                "create = neue Notiz; append = Text an eine bestehende Notiz anhängen (z.B. Einkaufsliste ergänzen); " +
+                "replace = Inhalt einer Notiz ersetzen; delete = Notiz löschen. Für append/replace/delete den Titel angeben " +
+                "(vorher list nutzen, wenn unklar). Formuliere Notizen knapp und sauber, Listen mit \"- \" pro Zeile.",
+                listOf("action"),
+                "action" to enumProp("Aktion", listOf("list", "create", "append", "replace", "delete")),
+                "title" to mapOf("type" to "string", "description" to "Titel der Notiz (kurz, max. 40 Zeichen)"),
+                "text" to mapOf("type" to "string", "description" to "Inhalt (create/append/replace)")),
             tool("flashlight", "Schaltet die Taschenlampe des Handys an oder aus.", listOf("on"),
                 "on" to mapOf("type" to "boolean")),
             tool("read_notifications", "Liest die aktuellen Mitteilungen am Handy (App, Titel, Text), z.B. für \"Was hat mir X geschrieben?\".",
@@ -599,10 +605,40 @@ class AiAssistant(private val app: WatchBridgeApp) {
                 bridge.send("AI_ACT", "timer", sec.toString(), (str(a, "title") ?: "Timer").replace('|', '/').take(40))
                 "Timer läuft" to false
             }
-            "add_note" -> {
-                val title = str(a, "title")?.takeIf { it.isNotEmpty() } ?: return bad("title")
-                app.notes.upsert(NotesRepo.Note(title = title.take(60), body = str(a, "text").orEmpty()))
-                "Gespeichert" to false
+            "notes" -> {
+                val all = app.notes.notes.value
+                val title = str(a, "title")?.takeIf { it.isNotEmpty() }
+                val text = str(a, "text").orEmpty()
+                fun find(): NotesRepo.Note? = title?.let { t ->
+                    all.firstOrNull { it.title.equals(t, true) } ?: all.firstOrNull { it.title.contains(t, true) }
+                }
+                when (str(a, "action")) {
+                    "list" -> (if (all.isEmpty()) "Keine Notizen" else all.joinToString("\n\n") {
+                        "# ${it.title}" + (if (!it.onWatch) " (nicht auf der Uhr)" else "") + "\n" + it.body.take(600)
+                    }) to false
+                    "create" -> {
+                        val t = title ?: return bad("title")
+                        app.notes.upsert(NotesRepo.Note(title = t.take(60), body = text))
+                        "Notiz \"$t\" erstellt" to false
+                    }
+                    "append" -> {
+                        val n = find() ?: return "Keine Notiz mit Titel \"$title\" – erst list aufrufen oder create nutzen" to true
+                        val body = if (n.body.isBlank()) text else n.body.trimEnd() + "\n" + text
+                        app.notes.upsert(n.copy(body = body, onWatch = true))
+                        "An \"${n.title}\" angehängt" to false
+                    }
+                    "replace" -> {
+                        val n = find() ?: return "Keine Notiz mit Titel \"$title\"" to true
+                        app.notes.upsert(n.copy(body = text, onWatch = true))
+                        "\"${n.title}\" aktualisiert" to false
+                    }
+                    "delete" -> {
+                        val n = find() ?: return "Keine Notiz mit Titel \"$title\"" to true
+                        app.notes.delete(n.id)
+                        "\"${n.title}\" gelöscht" to false
+                    }
+                    else -> bad("action")
+                }
             }
             "flashlight" -> {
                 val on = bool(a, "on") ?: return bad("on")
@@ -708,7 +744,7 @@ class AiAssistant(private val app: WatchBridgeApp) {
         private val MEDIA_ACTIONS = listOf("toggle", "play", "pause", "next", "prev", "vol_up", "vol_down")
         private val IR_KEYS = listOf("power", "vol_up", "vol_down", "mute", "ch_up", "ch_down", "input")
         private val WATCH_APPS = listOf("watchface", "untis", "media", "messages", "notes", "map", "remote",
-            "activity", "info", "hopturm", "tictactoe", "runner")
+            "activity", "info", "stopwatch", "hopturm", "tictactoe", "runner")
 
         private val SYSTEM_PROMPT = """
             Du bist der Sprachassistent auf der Smartwatch des Nutzers (LilyGo T-Watch, rundes 240×240-Pixel-Display).

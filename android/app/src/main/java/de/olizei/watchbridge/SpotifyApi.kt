@@ -284,6 +284,22 @@ class SpotifyApi(private val ctx: Context, private val prefs: Prefs) {
         return null
     }
 
+    /** Letzte Wiedergabe auf dem Handy fortsetzen (z.B. von der Uhr aus, wenn Spotify beendet war). */
+    fun resume(): String {
+        val device = phoneDevice() ?: run {
+            startSpotify()
+            var d: Pair<String, Boolean>? = null
+            for (i in 0 until 16) {
+                Thread.sleep(500)
+                d = phoneDevice()
+                if (d != null) break
+            }
+            d ?: throw ApiException("Spotify am Handy ist nicht erreichbar")
+        }
+        call("PUT", "/me/player/play?device_id=${device.first}")
+        return "Fortgesetzt"
+    }
+
     fun queue(uri: String): String {
         call("POST", "/me/player/queue?uri=${enc(uri)}")
         return "In die Warteschlange gelegt"
