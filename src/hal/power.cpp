@@ -37,24 +37,37 @@ bool begin() {
     pmu.enableSystemVoltageMeasure();
 
     pmu.setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V2);
-    pmu.setPowerKeyPressOffTime(XPOWERS_POWEROFF_6S);
+    // Seitentaste: kurz = Display, 1,5 s = "Ausschalten?"-Dialog, 10 s = harter Notaus der PMU
+    pmu.setIrqLevelTime(XPOWERS_AXP2101_IRQ_TIME_1S5);
+    pmu.setPowerKeyPressOffTime(XPOWERS_POWEROFF_10S);
+    pmu.setLongPressPowerOFF();
+    pmu.enableLongPressShutdown();
+    pmu.setPowerKeyPressOnTime(XPOWERS_POWERON_1S);  // Einschalten: 1 s halten (nicht aus Versehen)
 
     // Nur Tasten-IRQs, Rest stumm
     pmu.disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
     pmu.clearIrqStatus();
-    pmu.enableIRQ(XPOWERS_AXP2101_PKEY_SHORT_IRQ);
+    pmu.enableIRQ(XPOWERS_AXP2101_PKEY_SHORT_IRQ | XPOWERS_AXP2101_PKEY_LONG_IRQ);
     pinMode(PIN_PMU_INT, INPUT_PULLUP);
     attachInterrupt(PIN_PMU_INT, onPmuIrq, FALLING);
     return true;
 }
 
-bool pollButtonPressed() {
-    if (!s_ok || !s_irq) return false;
+Button pollButton() {
+    if (!s_ok || !s_irq) return Button::None;
     s_irq = false;
     pmu.getIrqStatus();
-    bool pressed = pmu.isPekeyShortPressIrq();
+    Button b = pmu.isPekeyLongPressIrq() ? Button::Long
+             : pmu.isPekeyShortPressIrq() ? Button::Short : Button::None;
     pmu.clearIrqStatus();
-    return pressed;
+    return b;
+}
+
+void shutdown() {
+    if (!s_ok) return;
+    // Schienen aus, dann die PMU selbst. Einschalten: Seitentaste 1 s halten.
+    pmu.clearIrqStatus();
+    pmu.shutdown();
 }
 
 int batteryPercent() {

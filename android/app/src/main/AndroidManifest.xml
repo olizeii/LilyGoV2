@@ -82,6 +82,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- Uhr sagt "Hallo" (advertised) -> Android weckt WatchBridge, auch wenn die App schläft -->
+        <receiver
+            android:name=".WatchSeenReceiver"
+            android:exported="false" />
+
         <!-- Tasker / MacroDroid: Intent "de.olizei.watchbridge.SEND" mit Extra "msg" -->
         <receiver
             android:name=".TaskerReceiver"

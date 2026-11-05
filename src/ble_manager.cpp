@@ -12,8 +12,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server, ble_gap_conn_desc* desc) override {
         BleManager::instance()._setConnHandle(desc->conn_handle);
         BleManager::instance()._setConnected(true);
-        // Etwas entspanntere Intervalle (15-30 ms) -> weniger Strom, trotzdem flott
-        server->updateConnParams(desc->conn_handle, 12, 24, 0, 400);
+        // Ruhezustand: 30-50 ms, die Uhr darf 4 Intervalle auslassen -> Funk meist aus
+        server->updateConnParams(desc->conn_handle, 24, 40, 4, 600);
     }
     void onDisconnect(NimBLEServer*) override {
         BleManager::instance()._setConnected(false);
@@ -64,7 +64,8 @@ void BleManager::begin(const char* deviceName) {
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
     adv->addServiceUUID(SERVICE_UUID);
     adv->setScanResponse(true);
-    adv->start();
+    server->advertiseOnDisconnect(false);   // wir starten selbst (schnell/langsam)
+    requestConnect(60000);                  // nach dem Einschalten 1 min schnell suchen
     log_i("BLE advertising als '%s'", deviceName);
 }
 
@@ -86,11 +87,41 @@ void BleManager::_onRxChunk(const std::string& chunk) {
     m_partial.clear();
 }
 
+void BleManager::startAdvertising(bool fast) {
+    NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+    if (adv->isAdvertising() && fast == m_advFast) return;
+    adv->stop();
+    // Einheiten à 0,625 ms: schnell 20-30 ms, sparsam 0,9-1,1 s
+    adv->setMinInterval(fast ? 32 : 1440);
+    adv->setMaxInterval(fast ? 48 : 1760);
+    adv->start();
+    m_advFast = fast;
+}
+
+void BleManager::requestConnect(uint32_t ms) {
+    m_fastUntil = millis() + ms;
+    if (m_fastUntil == 0) m_fastUntil = 1;
+    if (!m_connected) startAdvertising(true);
+}
+
 void BleManager::loop() {
     if (m_connected != m_lastConnected) {
         m_lastConnected = m_connected;
-        if (!m_connected) m_syncRequested = false;
+        if (!m_connected) {
+            m_syncRequested = false;
+            requestConnect(30000);   // gerade getrennt -> Handy kurz schnell zurückholen
+        } else {
+            m_fastUntil = 0;
+        }
         if (m_onConnection) m_onConnection(m_lastConnected);
+    }
+
+    // Advertising überwachen: schnell -> nach Ablauf sparsam; und nie ganz verstummen
+    if (!m_connected && millis() - m_lastAdvCheck > 500) {
+        m_lastAdvCheck = millis();
+        bool fast = m_fastUntil != 0 && (int32_t)(m_fastUntil - millis()) > 0;
+        if (!fast) m_fastUntil = 0;
+        startAdvertising(fast);
     }
 
     if (m_syncRequested) {
@@ -118,7 +149,7 @@ uint16_t BleManager::payloadSize() const {
 void BleManager::setFastLink(bool fast) {
     if (!m_connected || m_connHandle == 0xFFFF) return;
     if (fast) NimBLEDevice::getServer()->updateConnParams(m_connHandle, 6, 12, 0, 400);
-    else      NimBLEDevice::getServer()->updateConnParams(m_connHandle, 12, 24, 0, 400);
+    else      NimBLEDevice::getServer()->updateConnParams(m_connHandle, 24, 40, 4, 600);
 }
 
 bool BleManager::send(const String& cmd, const String& arg) {

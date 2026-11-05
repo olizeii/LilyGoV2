@@ -14,6 +14,8 @@ namespace activity {
 void begin();  // nach rtc_clock::begin() und store::begin()
 void loop();   // in loop(), auch während das Display schläft
 
+void flush();  // Tagesstand sofort sichern (z.B. vor dem Ausschalten)
+
 bool     available();   // Sensor gefunden?
 uint32_t steps();       // heute
 uint32_t goal();        // Tagesziel (Standard 10.000)

@@ -48,6 +48,11 @@ public:
     // Kürzere Verbindungsintervalle (7,5–15 ms) z.B. fürs Audio-Streaming.
     void setFastLink(bool fast);
 
+    // "Hallo, Handy?": für [ms] schnell (alle 30 ms) advertisen, damit sich WatchBridge sofort verbindet.
+    // Sonst wird – solange nicht verbunden – nur stromsparend alle ~1 s advertised.
+    void requestConnect(uint32_t ms = 30000);
+    bool isSearching() const { return !m_connected && m_fastUntil != 0; }
+
     // --- intern, von den NimBLE-Callbacks aufgerufen ---
     void _onRxChunk(const std::string& chunk);
     void _setConnected(bool c) { m_connected = c; }
@@ -67,6 +72,12 @@ private:
     uint16_t m_connHandle = 0xFFFF;
     std::deque<std::string> m_inbox;
     std::string m_partial;  // nur im BLE-Task benutzt
+
+    void startAdvertising(bool fast);
+
+    uint32_t m_fastUntil = 0;     // 0 = langsames Advertising
+    bool m_advFast       = false;
+    uint32_t m_lastAdvCheck = 0;
 
     volatile bool m_connected     = false;
     volatile bool m_syncRequested = false;

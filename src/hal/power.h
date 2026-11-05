@@ -9,8 +9,13 @@ namespace power {
 // Muss VOR dem Display laufen: schaltet Backlight- (ALDO2) und Touch-Rail (ALDO3) ein.
 bool begin();
 
-// Im loop() aufrufen. Liefert true, wenn die Seitentaste kurz gedrückt wurde.
-bool pollButtonPressed();
+enum class Button { None, Short, Long };
+
+// Im loop() aufrufen: kurz gedrückt / 1,5 s gehalten.
+Button pollButton();
+
+// Uhr komplett ausschalten (wie "Ausschalten" am iPhone). Einschalten: Taste 1 s halten.
+void shutdown();
 
 int  batteryPercent();   // 0..100, -1 = kein Akku erkannt
 bool isCharging();

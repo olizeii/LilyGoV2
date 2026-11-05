@@ -24,6 +24,7 @@
 #include "ui/ai_screen.h"
 #include "ui/banner.h"
 #include "ui/map_screen.h"
+#include "ui/power_screen.h"
 #include "ui/theme.h"
 #include "ui/ui_core.h"
 
@@ -34,10 +35,13 @@ static constexpr uint32_t BATTERY_POLL_MS       = 10000;
 static void wakeUp() {
     ui::onWake();     // erst aufs Watchface springen ...
     display::wake();  // ... dann zeichnen + Licht an
+    // Draufschauen = "Hallo Handy?": nicht verbunden -> kurz schnell advertisen
+    if (!BleManager::instance().isConnected()) BleManager::instance().requestConnect(20000);
 }
 
 static void sleepDisplay() {
     aiscreen::close();  // Assistent nicht im Hintergrund weiterlaufen lassen
+    powerscreen::close();
     display::sleep();
 }
 
@@ -89,11 +93,21 @@ void setup() {
 void loop() {
     BleManager::instance().loop();
 
-    // Seitentaste: Display an/aus
-    if (power::pollButtonPressed()) {
-        if (display::isAsleep())      wakeUp();
-        else if (aiscreen::isOpen())    aiscreen::close();
-        else if (!ui::dispatchButton()) sleepDisplay();  // z.B. Spiel: Taste = springen
+    // Seitentaste: kurz = Display an/aus, 1,5 s halten = Ausschalten-Dialog
+    switch (power::pollButton()) {
+        case power::Button::Short:
+            if (display::isAsleep())          wakeUp();
+            else if (powerscreen::isOpen())   powerscreen::close();
+            else if (aiscreen::isOpen())      aiscreen::close();
+            else if (!ui::dispatchButton())   sleepDisplay();  // z.B. Spiel: Taste = springen
+            break;
+        case power::Button::Long:
+            if (display::isAsleep()) wakeUp();
+            aiscreen::close();
+            powerscreen::open();
+            break;
+        default:
+            break;
     }
     if (display::consumeTouchWake()) wakeUp();
 
@@ -106,5 +120,5 @@ void loop() {
     ui::loop(!display::isAsleep());
     lv_timer_handler();
 
-    delay(display::isAsleep() ? 30 : 5);
+    delay(display::isAsleep() ? 50 : 5);
 }

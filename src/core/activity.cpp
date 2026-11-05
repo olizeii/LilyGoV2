@@ -38,6 +38,10 @@ static void save() {
     s_lastSave = millis();
 }
 
+void flush() {
+    if (s_steps != s_saved) save();
+}
+
 void begin() {
     motion::begin();
     s_goal = settings::getU32(KEY_GOAL, DEFAULT_GOAL);

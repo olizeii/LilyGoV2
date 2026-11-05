@@ -18,6 +18,27 @@ class BootReceiver : BroadcastReceiver() {
     }
 }
 
+/** System-Scan (PendingIntent) hat die Uhr gesehen -> sofort direkt verbinden. */
+class WatchSeenReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        val results: List<android.bluetooth.le.ScanResult> = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableArrayListExtra(android.bluetooth.le.BluetoothLeScanner.EXTRA_LIST_SCAN_RESULT,
+                android.bluetooth.le.ScanResult::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableArrayListExtra(android.bluetooth.le.BluetoothLeScanner.EXTRA_LIST_SCAN_RESULT)
+        } ?: return
+        val dev = results.firstOrNull()?.device ?: return
+        val app = WatchBridgeApp.instance
+        if (!app.prefs.autoStart) return
+        if (!BridgeService.running) {
+            // Dienst wurde beendet -> neu starten (Android kann das aus dem Hintergrund ablehnen)
+            try { BridgeService.start(ctx) } catch (_: Exception) { return }
+        }
+        app.link.onWatchSeen(dev)
+    }
+}
+
 /**
  * Schnittstelle für Tasker / MacroDroid:
  *   Aktion "Intent senden", Action = de.olizei.watchbridge.SEND,

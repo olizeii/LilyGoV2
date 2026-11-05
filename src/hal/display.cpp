@@ -173,10 +173,16 @@ void sleep() {
     s_asleep = true;
     s_tft.setBrightness(0);
     s_tft.sleep();
+    // Stromsparen: nichts mehr zeichnen (Uhrzeiger, Animationen …) und CPU runtertakten.
+    // 80 MHz ist das Minimum, bei dem Bluetooth noch sauber läuft.
+    if (lv_disp_t* d = lv_disp_get_default()) lv_timer_pause(d->refr_timer);
+    setCpuFrequencyMhz(80);
 }
 
 void wake() {
     if (!s_asleep) return;
+    setCpuFrequencyMhz(240);
+    if (lv_disp_t* d = lv_disp_get_default()) lv_timer_resume(d->refr_timer);
     s_tft.wakeup();
     s_asleep = false;
     lv_obj_invalidate(lv_scr_act());  // im Sleep wurde nichts geflusht

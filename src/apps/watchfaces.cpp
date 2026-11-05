@@ -2,8 +2,10 @@
 
 #include <math.h>
 
+#include "ble_manager.h"
 #include "core/activity.h"
 #include "core/data_store.h"
+#include "hal/haptics.h"
 #include "hal/rtc_clock.h"
 #include "ui/theme.h"
 #include "ui/ai_screen.h"
@@ -79,6 +81,79 @@ lv_obj_t* box(lv_obj_t* parent) {
     return b;
 }
 
+// -----------------------------------------------------------------------------
+//  "Handy verbinden"-Pille: erscheint unten auf dem Watchface, solange die Uhr
+//  getrennt ist. Antippen = "Hallo Handy?" (30 s schnell advertisen), WatchBridge
+//  verbindet sich dann von selbst. Kurze Vibration, sobald es geklappt hat.
+// -----------------------------------------------------------------------------
+struct ConnectPill {
+    lv_obj_t* pill  = nullptr;
+    lv_obj_t* text  = nullptr;
+    lv_obj_t* hide  = nullptr;   // Element, das die Pille überdeckt (wird solange ausgeblendet)
+    bool tapped     = false;
+
+    void create(lv_obj_t* tile, lv_obj_t* covers = nullptr) {
+        hide = covers;
+        pill = lv_obj_create(tile);
+        lv_obj_remove_style_all(pill);
+        lv_obj_set_size(pill, LV_SIZE_CONTENT, 30);
+        lv_obj_set_style_pad_hor(pill, 14, 0);
+        lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(pill, lv_color_hex(0x2C2C2E), 0);
+        lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(pill, lv_color_hex(0x3A3A3C), LV_STATE_PRESSED);
+        lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(pill, 6, 0);
+        lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_ext_click_area(pill, 8);
+        lv_obj_align(pill, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+        lv_obj_t* icon = lv_label_create(pill);
+        lv_obj_set_style_text_font(icon, &font_caption, 0);
+        lv_obj_set_style_text_color(icon, theme::tint(theme::Tint::Blue), 0);
+        lv_label_set_text(icon, LV_SYMBOL_BLUETOOTH);
+        text = lv_label_create(pill);
+        lv_obj_set_style_text_font(text, &font_caption, 0);
+        lv_obj_set_style_text_color(text, lv_color_white(), 0);
+
+        lv_obj_add_event_cb(pill, [](lv_event_t* e) {
+            auto* self = static_cast<ConnectPill*>(lv_event_get_user_data(e));
+            BleManager::instance().requestConnect(30000);
+            haptics::tap();
+            self->tapped = true;
+            self->refresh();
+        }, LV_EVENT_CLICKED, this);
+
+        // Suchstatus läuft ab -> Text zurücksetzen (nur 1x pro Sekunde, billig)
+        lv_timer_create([](lv_timer_t* t) {
+            auto* self = static_cast<ConnectPill*>(t->user_data);
+            if (!lv_obj_has_flag(self->pill, LV_OBJ_FLAG_HIDDEN)) self->refresh();
+        }, 1000, this);
+
+        store::subscribe(Topic::Connection, [this] {
+            if (store::data().bleConnected && tapped) haptics::success();
+            if (store::data().bleConnected) tapped = false;
+            refresh();
+        });
+        refresh();
+    }
+
+    void refresh() {
+        bool show = !store::data().bleConnected;
+        if (show) lv_obj_clear_flag(pill, LV_OBJ_FLAG_HIDDEN);
+        else      lv_obj_add_flag(pill, LV_OBJ_FLAG_HIDDEN);
+        if (hide) {
+            if (show) lv_obj_add_flag(hide, LV_OBJ_FLAG_HIDDEN);
+            else      lv_obj_clear_flag(hide, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (show) setText(text, BleManager::instance().isSearching() ? "Suche Handy …" : "Handy verbinden");
+    }
+};
+
+ConnectPill s_pillDigital, s_pillAnalog, s_pillModern;
+
 }  // namespace
 
 // -----------------------------------------------------------------------------
@@ -137,6 +212,7 @@ void DigitalFace::create(lv_obj_t* tile) {
     }
     m_batIcon  = theme::label(m_status, theme::textCaption(), LV_SYMBOL_BATTERY_FULL);
     m_batValue = theme::label(m_status, theme::textCaption(), DASH);
+    s_pillDigital.create(tile, nullptr);  // "Handy verbinden", solange getrennt
 }
 
 void DigitalFace::onTick() {
@@ -225,6 +301,7 @@ void AnalogFace::create(lv_obj_t* tile) {
     lv_obj_add_style(pin, theme::fillBg(), 0);
     lv_obj_set_size(pin, 4, 4);
     lv_obj_center(pin);
+    s_pillAnalog.create(tile, nullptr);  // "Handy verbinden", solange getrennt
 }
 
 void AnalogFace::setHand(Hand& h, float angleDeg, int stemLen, int length) {
@@ -293,6 +370,7 @@ void ModernFace::create(lv_obj_t* tile) {
 
     m_date = theme::label(tile, theme::textCaption());
     lv_obj_set_style_text_letter_space(m_date, 2, 0);
+    s_pillModern.create(tile, m_date);  // "Handy verbinden", solange getrennt
 }
 
 void ModernFace::onTick() {

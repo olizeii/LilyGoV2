@@ -12,7 +12,9 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -73,6 +75,7 @@ class BleLink(
     fun stop() {
         running = false
         stopScan()
+        setBackgroundScan(false)
         gatt?.disconnect()
         gatt?.close()
         gatt = null
@@ -147,6 +150,55 @@ class BleLink(
 
     // --- Verbinden ----------------------------------------------------------------
 
+    // --- "Hallo" der Uhr im Hintergrund hören --------------------------------------------------
+
+    private var bgScan = false
+    private var lastSeenConnect = 0L
+
+    /**
+     * Stromsparender System-Scan nach der Uhr, solange sie getrennt ist. Android liefert Treffer per
+     * PendingIntent an [WatchSeenReceiver] – auch wenn WatchBridge gerade schläft oder beendet wurde.
+     */
+    private fun setBackgroundScan(on: Boolean) {
+        if (on == bgScan) return
+        val scanner = adapter?.bluetoothLeScanner ?: return
+        try {
+            if (on) {
+                val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE)).build())
+                val settings = ScanSettings.Builder()
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+                    .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                    .build()
+                scanner.startScan(filters, settings, seenIntent())
+            } else {
+                scanner.stopScan(seenIntent())
+            }
+            bgScan = on
+        } catch (e: Exception) {
+            Log.w(TAG, "Hintergrund-Scan", e)
+        }
+    }
+
+    private fun seenIntent(): PendingIntent = PendingIntent.getBroadcast(
+        ctx, 7, Intent(ctx, WatchSeenReceiver::class.java),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+    )
+
+    /** Die Uhr advertised gerade (getrennt) -> direkt verbinden statt auf autoConnect zu warten. */
+    fun onWatchSeen(device: BluetoothDevice) {
+        handler.post {
+            if (!running || _state.value == State.CONNECTED) return@post
+            val now = System.currentTimeMillis()
+            if (now - lastSeenConnect < 8_000) return@post   // Verbindungsaufbau läuft schon
+            lastSeenConnect = now
+            if (prefs.watchAddress == null) prefs.watchAddress = device.address
+            if (device.address != prefs.watchAddress) return@post
+            Log.d(TAG, "Uhr gesehen -> direkt verbinden")
+            stopScan()
+            connect(device, autoConnect = false)
+        }
+    }
+
     private fun connectOrScan() {
         if (!running) return
         val addr = prefs.watchAddress
@@ -156,6 +208,7 @@ class BleLink(
             handler.postDelayed({ connectOrScan() }, 10_000)  // Bluetooth evtl. später an
             return
         }
+        setBackgroundScan(true)   // falls die Uhr gleich "Hallo" sagt
         if (addr != null) connect(a.getRemoteDevice(addr), autoConnect = failures > 0) else scan()
     }
 
@@ -202,6 +255,7 @@ class BleLink(
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 failures = 0
+                handler.post { setBackgroundScan(false) }
                 handler.post { g.requestMtu(517) }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 rx = null
@@ -210,6 +264,7 @@ class BleLink(
                 if (gatt == g) gatt = null
                 failures++
                 if (!running) return
+                handler.post { setBackgroundScan(true) }
                 _state.value = State.CONNECTING
                 // autoConnect=true: Android wartet selbst, bis die Uhr wieder auftaucht
                 handler.postDelayed({ connectOrScan() }, if (failures > 5) 15_000L else 2_000L)
