@@ -308,7 +308,7 @@ void openApp(const String& app) {
     static const Target TARGETS[] = {
         {"hopturm", 0, 0}, {"tictactoe", 0, 1}, {"runner", 0, 2},
         {"untis", 2, 0},   {"media", 2, 1},     {"spotify", 2, 1}, {"messages", 2, 2},
-        {"notes", 3, 1},   {"stopwatch", 3, 0},   {"remote", 4, 0},    {"ir", 4, 0},
+        {"notes", 3, 1},   {"stopwatch", 3, 0}, {"studio", 3, 2},   {"remote", 4, 0},    {"ir", 4, 0},
         {"activity", 1, ui::WATCHFACE_COUNT},   {"info", 1, ui::WATCHFACE_COUNT + 1},
     };
     close();

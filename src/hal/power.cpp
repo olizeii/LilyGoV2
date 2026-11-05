@@ -28,6 +28,7 @@ bool begin() {
     pmu.setALDO3Voltage(3300); pmu.enableALDO3();   // Touch
     pmu.setBLDO2Voltage(3300); pmu.enableBLDO2();   // DRV2605 (Vibration) Enable
     pmu.disableALDO4();                             // LoRa – ungenutzt, spart Strom
+    pmu.setDLDO1Voltage(3300); pmu.disableDLDO1();  // Lautsprecher-Verstärker: nur beim Abspielen an
 
     // Messungen für die Akku-Anzeige
     pmu.disableTSPinMeasure();          // kein NTC an der Watch
@@ -61,6 +62,12 @@ Button pollButton() {
              : pmu.isPekeyShortPressIrq() ? Button::Short : Button::None;
     pmu.clearIrqStatus();
     return b;
+}
+
+void speaker(bool on) {
+    if (!s_ok) return;
+    if (on) pmu.enableDLDO1();
+    else    pmu.disableDLDO1();
 }
 
 void shutdown() {

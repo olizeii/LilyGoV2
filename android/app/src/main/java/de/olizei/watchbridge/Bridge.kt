@@ -62,6 +62,7 @@ class Bridge(private val app: WatchBridgeApp) {
                 maps?.lease(p.getOrNull(0)?.toIntOrNull() ?: 15, p.getOrNull(1) == "1")
             }
             "MAP_STOP" -> maps?.endLease()
+            "BEAT_ACK" -> app.beats.onAck(arg.trim())
             "NOTIF_DISMISS" -> NotifListener.instance?.dismiss(arg)
             // Alles andere an Tasker/MacroDroid weiterreichen (Intent-Empfang "de.olizei.watchbridge.WATCH")
             else -> app.sendBroadcast(

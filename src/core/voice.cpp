@@ -226,6 +226,19 @@ bool start(uint32_t maxMs) {
 
 void stop() { s_run = false; }
 
+bool micOpen() {
+    if (s_task) return false;   // Sprachassistent nimmt gerade auf
+    return installI2s();
+}
+
+size_t micRead(int16_t* buf, size_t samples, uint32_t timeoutMs) {
+    size_t got = 0;
+    if (i2s_read(PORT, buf, samples * sizeof(int16_t), &got, pdMS_TO_TICKS(timeoutMs)) != ESP_OK) return 0;
+    return got / sizeof(int16_t);
+}
+
+void micClose() { i2s_driver_uninstall(PORT); }
+
 bool isRunning() { return s_task != nullptr; }
 
 bool timedOut() { return s_timedOut; }

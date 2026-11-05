@@ -482,7 +482,7 @@ class AiAssistant(private val app: WatchBridgeApp) {
                 "brightness_percent" to mapOf("type" to "integer", "minimum" to 5, "maximum" to 100)),
             tool("open_watch_app", "Öffnet eine Ansicht auf der Uhr (schließt dabei den Assistenten).", listOf("app"),
                 "app" to enumProp("watchface, untis = Stundenplan, media = Musik, messages = Mitteilungen, notes = Notizen, " +
-                    "map = Karte, remote = TV-Fernbedienung, activity = Schritte, info = Akku/Status, stopwatch = Stoppuhr, hopturm/tictactoe/runner = Spiele",
+                    "map = Karte, remote = TV-Fernbedienung, activity = Schritte, info = Akku/Status, stopwatch = Stoppuhr, studio = Beat-Studio, hopturm/tictactoe/runner = Spiele",
                     WATCH_APPS)),
             tool("set_timer", "Stellt einen Timer auf der Uhr; sie vibriert, wenn er abläuft.", listOf("seconds"),
                 "seconds" to mapOf("type" to "integer", "minimum" to 1, "maximum" to 86400),
@@ -744,7 +744,7 @@ class AiAssistant(private val app: WatchBridgeApp) {
         private val MEDIA_ACTIONS = listOf("toggle", "play", "pause", "next", "prev", "vol_up", "vol_down")
         private val IR_KEYS = listOf("power", "vol_up", "vol_down", "mute", "ch_up", "ch_down", "input")
         private val WATCH_APPS = listOf("watchface", "untis", "media", "messages", "notes", "map", "remote",
-            "activity", "info", "stopwatch", "hopturm", "tictactoe", "runner")
+            "activity", "info", "stopwatch", "studio", "hopturm", "tictactoe", "runner")
 
         private val SYSTEM_PROMPT = """
             Du bist der Sprachassistent auf der Smartwatch des Nutzers (LilyGo T-Watch, rundes 240×240-Pixel-Display).

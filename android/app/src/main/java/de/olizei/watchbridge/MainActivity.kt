@@ -319,6 +319,10 @@ class MainActivity : ComponentActivity() {
             item { AiGroup(c) }
             item { SpotifyGroup(c) }
 
+            // Studio (Beats für die Uhr)
+            item { Header(c, "Studio") }
+            item { StudioGroup(c) }
+
             // Notizen
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -603,6 +607,33 @@ class MainActivity : ComponentActivity() {
                             p.spClientId = clientId
                             app.spotify.login(this@MainActivity)
                         }) { Text("Mit Spotify verbinden") }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun StudioGroup(c: Ios) {
+        val status by app.beats.status.collectAsState()
+        val busy by app.beats.busy.collectAsState()
+        val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) app.beats.upload(uri)
+        }
+        Group(c) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RowIcon(Icons.Default.MusicNote, c.purple)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Beat auf die Uhr laden", color = c.text, fontSize = 17.sp)
+                        Text(status.ifEmpty { "MP3, M4A, WAV … – die ersten 40 s werden übertragen" },
+                            color = c.secondary, fontSize = 13.sp)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton({ pick.launch(arrayOf("audio/*")) }, enabled = !busy) {
+                        Text(if (busy) "Wird übertragen …" else "Beat auswählen")
                     }
                 }
             }

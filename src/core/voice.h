@@ -25,4 +25,9 @@ bool timedOut();         // maxMs erreicht -> von selbst gestoppt
 // Geglätteter Pegel 0..1 (für die Animation)
 float level();
 
+// Direkter Mikrofon-Zugriff (z.B. Studio-Aufnahme). Nicht gleichzeitig mit start() nutzbar.
+bool micOpen();
+size_t micRead(int16_t* buf, size_t samples, uint32_t timeoutMs);  // Anzahl gelesener Samples
+void micClose();
+
 }  // namespace voice

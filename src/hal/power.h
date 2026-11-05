@@ -14,6 +14,9 @@ enum class Button { None, Short, Long };
 // Im loop() aufrufen: kurz gedrückt / 1,5 s gehalten.
 Button pollButton();
 
+// Versorgung des Lautsprecher-Verstärkers (MAX98357, PMU-Schiene DLDO1)
+void speaker(bool on);
+
 // Uhr komplett ausschalten (wie "Ausschalten" am iPhone). Einschalten: Taste 1 s halten.
 void shutdown();
 

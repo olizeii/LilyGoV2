@@ -8,6 +8,7 @@
 #include "apps/placeholder_app.h"
 #include "apps/runner_app.h"
 #include "apps/stopwatch_app.h"
+#include "apps/studio_app.h"
 #include "apps/tictactoe_app.h"
 #include "apps/untis_app.h"
 #include "apps/watchfaces.h"
@@ -27,7 +28,7 @@ static MessagesApp s_messages;
 
 static StopwatchApp s_stopwatch;
 static NotesApp s_notes;
-static PlaceholderApp s_shortcut2("Kurzbefehl 2", ICON_BOLT, Tint::Pink);
+static StudioApp s_studio;
 
 static IrRemoteApp s_irRemote;
 static PlaceholderApp s_hack("Hack", ICON_TERMINAL, Tint::Gray);
@@ -49,7 +50,7 @@ void registerAll() {
     // X=3  Widgets & Notes
     ui::registerApp(3, 0, &s_stopwatch);
     ui::registerApp(3, 1, &s_notes);
-    ui::registerApp(3, 2, &s_shortcut2);
+    ui::registerApp(3, 2, &s_studio);
 
     // X=4  Tools & Hacks
     ui::registerApp(4, 0, &s_irRemote);
