@@ -105,7 +105,7 @@ class BleLink(
         // Endet die Nachricht selbst auf '~', hielte die Uhr sie für unvollständig
         if (bytes.isNotEmpty() && bytes.last() == '~'.code.toByte()) bytes += ' '.code.toByte()
 
-        val payload = (mtu - 3).coerceAtLeast(20)
+        val payload = (mtu - 3).coerceIn(20, 512)  // ATT erlaubt max. 512 Byte pro Wert
         if (bytes.size <= payload) {
             outbox.trySend(bytes)
             return
@@ -135,7 +135,7 @@ class BleLink(
         val c = rx ?: return false
         val done = CompletableDeferred<Boolean>()
         writeResult = done
-        val started = if (Build.VERSION.SDK_INT >= 33) {
+        val started = try { if (Build.VERSION.SDK_INT >= 33) {
             g.writeCharacteristic(c, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS
         } else {
             @Suppress("DEPRECATION")
@@ -143,6 +143,9 @@ class BleLink(
             c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             @Suppress("DEPRECATION")
             g.writeCharacteristic(c)
+        } } catch (e: Exception) {
+            Log.w(TAG, "Write abgelehnt (${bytes.size} B)", e)
+            false
         }
         if (!started) return false
         return withTimeoutOrNull(3000) { done.await() } ?: false
