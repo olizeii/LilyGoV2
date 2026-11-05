@@ -219,18 +219,35 @@ class MapProvider(private val ctx: Context, private val scope: CoroutineScope, p
         return out
     }
 
+    /** Helligkeit umkehren, Farbton behalten (Wasser bleibt blau, Parks grün) – wie ein Dark-Mode-Kartenstil. */
+    private fun darken(src: Bitmap): Bitmap {
+        val w = src.width; val h = src.height
+        val px = IntArray(w * h)
+        src.copy(Bitmap.Config.ARGB_8888, false).getPixels(px, 0, w, 0, 0, w, h)
+        for (i in px.indices) {
+            val p = px[i]
+            val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val b = p and 0xFF
+            val y = (r * 299 + g * 587 + b * 114) / 1000
+            val ny = ((255 - y) * 0.82f).toInt() + 8          // dunkler Grund, nicht ganz schwarz
+            val d = ny - y
+            fun ch(v: Int) = ((v + d) * 0.9f + ny * 0.1f).toInt().coerceIn(0, 255)   // leicht entsättigt
+            px[i] = (0xFF shl 24) or (ch(r) shl 16) or (ch(g) shl 8) or ch(b)
+        }
+        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
+    }
+
     private fun tile(z: Int, x: Int, y: Int, darkMode: Boolean): Bitmap? {
-        val style = if (darkMode) "dark_all" else "light_all"
-        val key = "$style/$z/$x/$y"
+        // OpenStreetMap (ohne Schlüssel; CARTO verlangt inzwischen einen API-Key). Dunkel: selbst umgefärbt.
+        val key = "${if (darkMode) "d" else "l"}/$z/$x/$y"
         tiles.get(key)?.let { return it }
-        val sub = "abcd"[(x + y) and 3]
-        val c = URL("https://$sub.basemaps.cartocdn.com/$style/$z/$x/$y.png").openConnection() as HttpURLConnection
+        val c = URL("https://tile.openstreetmap.org/$z/$x/$y.png").openConnection() as HttpURLConnection
         c.connectTimeout = 10_000
         c.readTimeout = 10_000
         c.setRequestProperty("User-Agent", "WatchBridge/1.0 (Android; smartwatch companion)")
         return try {
             if (c.responseCode != 200) return null
-            val bmp = c.inputStream.use { BitmapFactory.decodeStream(it) } ?: return null
+            val raw = c.inputStream.use { BitmapFactory.decodeStream(it) } ?: return null
+            val bmp = if (darkMode) darken(raw) else raw
             tiles.put(key, bmp)
             bmp
         } finally {
