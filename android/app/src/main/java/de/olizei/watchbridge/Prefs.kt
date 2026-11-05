@@ -55,6 +55,10 @@ class Prefs(ctx: Context) {
         get() = sp.getString("sp_client", "") ?: ""
         set(v) = sp.edit { putString("sp_client", v.trim()) }
 
+    var auddToken: String
+        get() = sp.getString("audd_token", "") ?: ""
+        set(v) = sp.edit { putString("audd_token", v) }
+
     var spRefresh: String
         get() = sp.getString("sp_refresh", "") ?: ""
         set(v) = sp.edit { putString("sp_refresh", v) }

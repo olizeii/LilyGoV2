@@ -20,6 +20,7 @@ class WatchBridgeApp : Application() {
     lateinit var ai: AiAssistant private set
     lateinit var spotify: SpotifyApi private set
     lateinit var beats: BeatUploader private set
+    lateinit var songs: SongRecognizer private set
 
     override fun onCreate() {
         super.onCreate()
@@ -31,6 +32,7 @@ class WatchBridgeApp : Application() {
         spotify = SpotifyApi(this, prefs)
         ai = AiAssistant(this)
         beats = BeatUploader(this)
+        songs = SongRecognizer(this)
     }
 
     companion object {

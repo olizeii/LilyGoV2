@@ -487,6 +487,10 @@ class AiAssistant(private val app: WatchBridgeApp) {
             tool("set_timer", "Stellt einen Timer auf der Uhr; sie vibriert, wenn er abläuft.", listOf("seconds"),
                 "seconds" to mapOf("type" to "integer", "minimum" to 1, "maximum" to 86400),
                 "title" to mapOf("type" to "string", "description" to "Kurzer Name, z.B. \"Nudeln\"")),
+            tool("identify_song", "Erkennt den Song, der gerade in der Umgebung läuft (wie Shazam): nimmt ~9 s mit dem " +
+                "Handy-Mikrofon auf. Nutzen bei \"was ist das für ein Song?\" o.ä. – NICHT für Musik, die am Handy selbst " +
+                "läuft (die steht in now_playing / media). Liefert ggf. eine Spotify-URI zum Abspielen oder Merken.",
+                emptyList()),
             tool("notes", "Notizen des Nutzers (erscheinen auf der Uhr unter Notizen). list = alle Titel mit Inhalt lesen; " +
                 "create = neue Notiz; append = Text an eine bestehende Notiz anhängen (z.B. Einkaufsliste ergänzen); " +
                 "replace = Inhalt einer Notiz ersetzen; delete = Notiz löschen. Für append/replace/delete den Titel angeben " +
@@ -640,6 +644,7 @@ class AiAssistant(private val app: WatchBridgeApp) {
                     else -> bad("action")
                 }
             }
+            "identify_song" -> app.songs.identify()
             "flashlight" -> {
                 val on = bool(a, "on") ?: return bad("on")
                 val cm = app.getSystemService(Context.CAMERA_SERVICE) as CameraManager

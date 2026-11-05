@@ -500,6 +500,7 @@ class MainActivity : ComponentActivity() {
         val p = app.prefs
         var key by remember { mutableStateOf(p.aiKey) }
         var cmds by remember { mutableStateOf(p.aiCommands) }
+        var audd by remember { mutableStateOf(p.auddToken) }
         var model by remember { mutableStateOf(p.aiModel) }
         var question by remember { mutableStateOf("") }
         val status by app.ai.status.collectAsState()
@@ -546,6 +547,13 @@ class MainActivity : ComponentActivity() {
                 Text("Schlüssel und Guthaben unter console.anthropic.com – dort am besten ein Monatslimit setzen. " +
                     "Wiederholte Anweisungen werden zwischengespeichert (günstiger).", color = c.secondary, fontSize = 12.sp)
                 OutlinedTextField(
+                    audd, { audd = it }, label = { Text("Song-Erkennung: AudD-Token (optional)") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Für „Was ist das für ein Song?“ – kostenloser Token auf dashboard.audd.io (300 Erkennungen gratis).",
+                    color = c.secondary, fontSize = 12.sp)
+                OutlinedTextField(
                     cmds, { cmds = it }, label = { Text("Eigene Tasker-Befehle (optional)") },
                     placeholder = { Text("licht_an: Wohnzimmerlicht einschalten") },
                     minLines = 2, modifier = Modifier.fillMaxWidth(),
@@ -554,7 +562,7 @@ class MainActivity : ComponentActivity() {
                     color = c.secondary, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton({
-                        p.aiKey = key; p.aiCommands = cmds
+                        p.aiKey = key; p.aiCommands = cmds; p.auddToken = audd
                         Toast.makeText(this@MainActivity, "Gespeichert", Toast.LENGTH_SHORT).show()
                     }) { Text("Speichern") }
                 }
