@@ -42,10 +42,26 @@ class Bridge(private val app: WatchBridgeApp) {
     private fun last(s: CharSequence?): String = (s ?: "").toString().replace("\r", "").trim()
 
     fun send(topic: String, vararg fields: String) {
-        app.link.send(if (fields.isEmpty()) topic else topic + "|" + fields.joinToString("|"))
+        app.link.send(clean(if (fields.isEmpty()) topic else topic + "|" + fields.joinToString("|")))
     }
 
-    fun sendRaw(message: String) = app.link.send(message)
+    fun sendRaw(message: String) = app.link.send(clean(message))
+
+    /** Unsichtbare Emoji-Zusätze entfernen (die Uhr zeigt sie sonst als Kästchen):
+     *  Varianten-Selektoren, Verbinder (ZWJ), Hautfarben, Flaggen-Tags. */
+    private fun clean(s: String): String {
+        if (s.none { it.code >= 0x200B }) return s
+        val sb = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            val skip = cp == 0xFE0F || cp == 0xFE0E || cp == 0x200D || cp == 0x200B || cp == 0x20E3 ||
+                cp in 0x1F3FB..0x1F3FF || cp in 0xE0020..0xE007F
+            if (!skip) sb.appendCodePoint(cp)
+            i += Character.charCount(cp)
+        }
+        return sb.toString()
+    }
 
     // --- Befehle der Uhr ---------------------------------------------------------
 
