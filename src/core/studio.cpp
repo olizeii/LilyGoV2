@@ -223,14 +223,17 @@ void task(void*) {
     s_run = false;
     s_rev++;
     s_task = nullptr;
+    power::keepAwake(power::AWAKE_AUDIO, false);
     vTaskDelete(nullptr);
 }
 
 bool startTask() {
+    power::keepAwake(power::AWAKE_AUDIO, true);
     power::speaker(true);
     delay(5);
     if (!installSpeaker()) {
         power::speaker(false);
+        power::keepAwake(power::AWAKE_AUDIO, false);
         return false;
     }
     s_run = true;
@@ -238,6 +241,7 @@ bool startTask() {
         s_run = false;
         i2s_driver_uninstall(SPK);
         power::speaker(false);
+        power::keepAwake(power::AWAKE_AUDIO, false);
         return false;
     }
     s_rev++;

@@ -13,7 +13,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         BleManager::instance()._setConnHandle(desc->conn_handle);
         BleManager::instance()._setConnected(true);
         // Ruhezustand: 30-50 ms, die Uhr darf 4 Intervalle auslassen -> Funk meist aus
-        server->updateConnParams(desc->conn_handle, 24, 40, 4, 600);
+        server->updateConnParams(desc->conn_handle, 24, 40, 8, 600);
     }
     void onDisconnect(NimBLEServer*) override {
         BleManager::instance()._setConnected(false);
@@ -149,7 +149,7 @@ uint16_t BleManager::payloadSize() const {
 void BleManager::setFastLink(bool fast) {
     if (!m_connected || m_connHandle == 0xFFFF) return;
     if (fast) NimBLEDevice::getServer()->updateConnParams(m_connHandle, 6, 12, 0, 400);
-    else      NimBLEDevice::getServer()->updateConnParams(m_connHandle, 24, 40, 4, 600);
+    else      NimBLEDevice::getServer()->updateConnParams(m_connHandle, 24, 40, 8, 600);
 }
 
 bool BleManager::send(const String& cmd, const String& arg) {

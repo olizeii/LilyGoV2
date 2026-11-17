@@ -52,6 +52,7 @@ static void pollWatchBattery() {
     last = millis();
 
     WatchData& d  = store::data();
+    power::keepAwake(power::AWAKE_USB, power::isUsbConnected());
     int pct       = power::batteryPercent();
     bool charging = power::isCharging();
     if (pct != d.watchBattery || charging != d.watchCharging) {
@@ -90,6 +91,11 @@ void setup() {
         store::publish(Topic::Connection);
     });
     ble.begin(BLE_NAME);
+
+    // Ab jetzt schläft die CPU automatisch, wenn nichts zu tun ist (Display aus)
+    power::keepAwake(power::AWAKE_DISPLAY, !display::isAsleep());
+    power::keepAwake(power::AWAKE_USB, power::isUsbConnected());
+    power::initSleep();
 }
 
 void loop() {
@@ -122,5 +128,6 @@ void loop() {
     ui::loop(!display::isAsleep());
     lv_timer_handler();
 
-    delay(display::isAsleep() ? 50 : 5);
+    // Display aus: selten aufwachen (Taste/Touch werden per Pegel erkannt, BLE weckt selbst)
+    delay(display::isAsleep() ? 100 : 5);
 }

@@ -5,6 +5,7 @@
 
 #include "ble_manager.h"
 #include "config/pins.h"
+#include "hal/power.h"
 
 namespace voice {
 namespace {
@@ -186,6 +187,7 @@ void task(void*) {
     s_level = 0;
     s_run   = false;
     s_task  = nullptr;
+    power::keepAwake(power::AWAKE_VOICE, false);
     vTaskDelete(nullptr);
 }
 
@@ -206,8 +208,10 @@ bool start(uint32_t maxMs) {
     s_raw = (usable / 4) * 3;
     if (s_raw > MAX_RAW) s_raw = MAX_RAW;
 
+    power::keepAwake(power::AWAKE_VOICE, true);
     if (!installI2s()) {
         log_w("I2S-PDM konnte nicht starten");
+        power::keepAwake(power::AWAKE_VOICE, false);
         return false;
     }
     ble.setFastLink(true);
@@ -219,6 +223,7 @@ bool start(uint32_t maxMs) {
         s_run = false;
         i2s_driver_uninstall(PORT);
         ble.setFastLink(false);
+        power::keepAwake(power::AWAKE_VOICE, false);
         return false;
     }
     return true;

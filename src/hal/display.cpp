@@ -5,6 +5,7 @@
 #include <esp_heap_caps.h>
 
 #include "config/pins.h"
+#include "hal/power.h"
 
 namespace display {
 
@@ -175,14 +176,17 @@ void sleep() {
     s_tft.sleep();
     // Stromsparen: nichts mehr zeichnen (Uhrzeiger, Animationen …) und CPU runtertakten.
     // 80 MHz ist das Minimum, bei dem Bluetooth noch sauber läuft.
+    // Touch nicht mehr per I2C abfragen – Wecken übernimmt der Touch-INT-Pin
     if (lv_disp_t* d = lv_disp_get_default()) lv_timer_pause(d->refr_timer);
-    setCpuFrequencyMhz(80);
+    if (lv_indev_t* i = lv_indev_get_next(nullptr)) lv_timer_pause(i->driver->read_timer);
+    power::keepAwake(power::AWAKE_DISPLAY, false);
 }
 
 void wake() {
     if (!s_asleep) return;
-    setCpuFrequencyMhz(240);
+    power::keepAwake(power::AWAKE_DISPLAY, true);
     if (lv_disp_t* d = lv_disp_get_default()) lv_timer_resume(d->refr_timer);
+    if (lv_indev_t* i = lv_indev_get_next(nullptr)) lv_timer_resume(i->driver->read_timer);
     s_tft.wakeup();
     s_asleep = false;
     lv_obj_invalidate(lv_scr_act());  // im Sleep wurde nichts geflusht
@@ -195,6 +199,11 @@ void wake() {
 bool isAsleep() { return s_asleep; }
 
 bool consumeTouchWake() {
+    // Im Schlaf: Touch-Controller zieht INT auf LOW, solange ein Finger drauf ist
+    if (s_asleep && digitalRead(PIN_TOUCH_INT) == LOW) {
+        s_touchWake    = true;
+        s_swallowTouch = true;
+    }
     bool w = s_touchWake;
     s_touchWake = false;
     return w;

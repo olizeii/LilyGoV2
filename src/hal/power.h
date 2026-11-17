@@ -17,6 +17,19 @@ Button pollButton();
 // Versorgung des Lautsprecher-Verstärkers (MAX98357, PMU-Schiene DLDO1)
 void speaker(bool on);
 
+// --- Stromsparen (ESP-IDF Power-Management) -----------------------------------
+// Ohne Sperre schläft die CPU automatisch (Light Sleep), BLE bleibt verbunden.
+// Solange irgendein Grund gesetzt ist, bleibt sie wach.
+enum Awake : uint8_t {
+    AWAKE_DISPLAY = 1,   // Display an: volle Taktrate, flüssige UI
+    AWAKE_USB     = 2,   // am Kabel: USB-Seriell/Flashen soll erreichbar bleiben
+    AWAKE_AUDIO   = 4,   // Studio spielt / nimmt auf
+    AWAKE_VOICE   = 8,   // Sprachassistent nimmt auf
+};
+void initSleep();                    // nach BLE-Start aufrufen
+void keepAwake(uint8_t reason, bool on);
+bool sleepEnabled();                 // Power-Management aktiv?
+
 // Uhr komplett ausschalten (wie "Ausschalten" am iPhone). Einschalten: Taste 1 s halten.
 void shutdown();
 
