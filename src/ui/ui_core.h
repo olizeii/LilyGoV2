@@ -32,6 +32,9 @@ void loop(bool displayOn);
 void showTile(uint8_t col, uint8_t row, bool animate = false);
 void showWatchface(bool animate = false);  // zuletzt aktives Watchface (NVS)
 
+// Einstellung: nach dem Aufwachen die zuletzt offene App statt des Zifferblatts zeigen
+bool wakeToLastApp();
+void setWakeToLastApp(bool on);
 void onWake();  // Display wieder an -> immer zurück aufs Watchface
 
 lv_obj_t* tileview();

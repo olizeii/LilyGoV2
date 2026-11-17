@@ -215,7 +215,15 @@ void showTile(uint8_t col, uint8_t row, bool animate) {
 
 void showWatchface(bool animate) { showTile(COL_WATCHFACES, s_lastFace, animate); }
 
+bool wakeToLastApp() { return settings::getU8("wakeLast", 0) != 0; }
+void setWakeToLastApp(bool on) { settings::putU8("wakeLast", on ? 1 : 0); }
+
 void onWake() {
+    // Einstellung "Letzte App zeigen": alles so lassen, wie es war
+    if (wakeToLastApp() && s_current) {
+        s_current->app->onShow();
+        return;
+    }
     // Wie bei watchOS: nach dem Aufwachen keine offenen Detailansichten mehr
     ui::closeAllSheets();
     mapscreen::close();

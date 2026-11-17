@@ -492,7 +492,7 @@ lv_obj_t* listRow(lv_obj_t* list, const char* symbol, lv_color_t tint, bool last
     const theme::Palette& p = theme::colors();
 
     lv_obj_t* row = box(list);
-    lv_obj_set_size(row, LV_PCT(100), theme::ROW_H);
+    lv_obj_set_size(row, LV_PCT(100), 44);   // 5 Zeilen passen aufs Display (44 px = Touch-Minimum)
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_left(row, 10, 0);
@@ -573,7 +573,7 @@ void InfoTile::create(lv_obj_t* tile) {
     m_bleStatus = theme::label(c, theme::textCaption(), "");
 
     // --- Dunkelmodus ---
-    c = listRow(list, ICON_MOON, theme::tint(theme::Tint::Indigo), true);
+    c = listRow(list, ICON_MOON, theme::tint(theme::Tint::Indigo), false);
     rowTitle(c, "Dunkelmodus");
     m_darkSwitch = lv_switch_create(c);
     lv_obj_set_size(m_darkSwitch, 44, 26);
@@ -581,6 +581,17 @@ void InfoTile::create(lv_obj_t* tile) {
     if (theme::isDark()) lv_obj_add_state(m_darkSwitch, LV_STATE_CHECKED);
     lv_obj_add_event_cb(
         m_darkSwitch, [](lv_event_t* e) { theme::setDark(lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED)); },
+        LV_EVENT_VALUE_CHANGED, nullptr);
+
+    // --- Aufwachen: zuletzt offene App statt Zifferblatt ---
+    c = listRow(list, LV_SYMBOL_LOOP, theme::tint(theme::Tint::Orange), true);
+    rowTitle(c, "Letzte App zeigen");
+    lv_obj_t* sw = lv_switch_create(c);
+    lv_obj_set_size(sw, 44, 26);
+    lv_obj_set_ext_click_area(sw, 10);
+    if (ui::wakeToLastApp()) lv_obj_add_state(sw, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(
+        sw, [](lv_event_t* e) { ui::setWakeToLastApp(lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED)); },
         LV_EVENT_VALUE_CHANGED, nullptr);
 
     store::subscribe(Topic::Battery,    [this] { refresh(); });
