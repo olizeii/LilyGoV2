@@ -10,6 +10,8 @@ namespace sfx {
 
 enum class Sound : uint8_t { Whip, Gun };
 
+void begin();   // registriert den Empfang eigener Sounds vom Handy (SFX_BEGIN/SFX/SFX_END/SFX_RESET)
+
 bool open();
 void close();
 bool isOpen();

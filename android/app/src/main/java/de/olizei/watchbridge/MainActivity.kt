@@ -323,6 +323,10 @@ class MainActivity : ComponentActivity() {
             item { Header(c, "Studio") }
             item { StudioGroup(c) }
 
+            // Sound-Gesten (eigene Sounds)
+            item { Header(c, "Sound-Gesten") }
+            item { SfxGroup(c) }
+
             // Notizen
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -642,6 +646,31 @@ class MainActivity : ComponentActivity() {
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton({ pick.launch(arrayOf("audio/*")) }, enabled = !busy) {
                         Text(if (busy) "Wird übertragen …" else "Beat auswählen")
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun SfxGroup(c: Ios) {
+        val status by app.beats.sfxStatus.collectAsState()
+        val busy by app.beats.busy.collectAsState()
+        var slot by remember { mutableStateOf("whip") }
+        val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) app.beats.upload(uri, slot)
+        }
+        Group(c) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(status.ifEmpty { "Eigene Sounds für Peitsche und Pistole (max. 3 s, Stille am Anfang wird abgeschnitten)" },
+                    color = c.secondary, fontSize = 13.sp)
+                for ((key, label) in listOf("whip" to "Peitsche", "gun" to "Pistole")) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        RowIcon(Icons.Default.MusicNote, if (key == "gun") c.orange else c.red)
+                        Spacer(Modifier.width(12.dp))
+                        Text(label, color = c.text, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                        TextButton({ app.beats.resetSound(key) }, enabled = !busy) { Text("Standard", color = c.secondary) }
+                        TextButton({ slot = key; pick.launch(arrayOf("audio/*")) }, enabled = !busy) { Text("Sound wählen") }
                     }
                 }
             }

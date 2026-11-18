@@ -1,10 +1,13 @@
 #include "sfx.h"
 
+#include <LittleFS.h>
 #include <driver/i2s.h>
+#include <mbedtls/base64.h>
 #include <esp_heap_caps.h>
 #include <math.h>
 
 #include "config/pins.h"
+#include "core/data_store.h"
 #include "hal/power.h"
 
 namespace sfx {
@@ -18,6 +21,93 @@ int16_t* s_whip = nullptr;
 uint32_t s_whipLen = 0;
 int16_t* s_gun = nullptr;
 uint32_t s_gunLen = 0;
+
+// Eigene Sounds vom Handy (µ-law im Flash, beim Öffnen nach PCM dekodiert)
+constexpr uint32_t MAX_CUSTOM = RATE * 3;
+int16_t* s_custom[2] = {};
+uint32_t s_customLen[2] = {};
+bool s_customLoaded = false;
+uint8_t* s_rxBuf = nullptr;
+uint32_t s_rxSize = 0, s_rxPos = 0;
+int s_rxSlot = -1, s_rxChunks = 0;
+
+const char* fileFor(int slot) { return slot == (int)Sound::Gun ? "/sfx_gun.ul" : "/sfx_whip.ul"; }
+int slotOf(const String& s) { return s.startsWith("gun") ? (int)Sound::Gun : (int)Sound::Whip; }
+
+int16_t ulawDecode(uint8_t v) {
+    uint8_t u = ~v;
+    int t = ((u & 0x0F) << 3) + 0x84;
+    t <<= (u & 0x70) >> 4;
+    return (u & 0x80) ? (0x84 - t) : (t - 0x84);
+}
+
+void loadCustom(int slot) {
+    if (s_custom[slot]) { heap_caps_free(s_custom[slot]); s_custom[slot] = nullptr; }
+    s_customLen[slot] = 0;
+    if (!LittleFS.exists(fileFor(slot))) return;
+    File f = LittleFS.open(fileFor(slot), "r");
+    if (!f) return;
+    uint32_t n = min<uint32_t>(f.size(), MAX_CUSTOM);
+    auto* raw = static_cast<uint8_t*>(heap_caps_malloc(n, MALLOC_CAP_SPIRAM));
+    auto* pcm = static_cast<int16_t*>(heap_caps_malloc(n * 2, MALLOC_CAP_SPIRAM));
+    if (raw && pcm && f.read(raw, n) == n) {
+        for (uint32_t i = 0; i < n; i++) pcm[i] = ulawDecode(raw[i]);
+        s_custom[slot] = pcm;
+        s_customLen[slot] = n;
+        pcm = nullptr;
+    }
+    f.close();
+    if (raw) heap_caps_free(raw);
+    if (pcm) heap_caps_free(pcm);
+}
+
+bool handle(const String& topic, const String& payload) {
+    if (topic == "SFX") {
+        if (!s_rxBuf) return true;
+        size_t out = 0;
+        if (mbedtls_base64_decode(s_rxBuf + s_rxPos, s_rxSize - s_rxPos, &out,
+                                  reinterpret_cast<const uint8_t*>(payload.c_str()), payload.length()) != 0) {
+            heap_caps_free(s_rxBuf);
+            s_rxBuf = nullptr;
+            store::sendToPhone("BEAT_ACK", "-1");
+            return true;
+        }
+        s_rxPos += out;
+        if (++s_rxChunks % 8 == 0) store::sendToPhone("BEAT_ACK", String(s_rxChunks));
+        return true;
+    }
+    if (topic == "SFX_BEGIN") {   // SFX_BEGIN|whip|<bytes>
+        int sep = payload.indexOf('|');
+        s_rxSlot = slotOf(payload);
+        s_rxSize = min<uint32_t>(payload.substring(sep + 1).toInt(), MAX_CUSTOM);
+        s_rxPos = 0;
+        s_rxChunks = 0;
+        if (s_rxBuf) heap_caps_free(s_rxBuf);
+        s_rxBuf = s_rxSize ? static_cast<uint8_t*>(heap_caps_malloc(s_rxSize, MALLOC_CAP_SPIRAM)) : nullptr;
+        store::sendToPhone("BEAT_ACK", s_rxBuf ? "0" : "-1");
+        return true;
+    }
+    if (topic == "SFX_END") {
+        bool ok = s_rxBuf && s_rxPos >= s_rxSize;
+        if (ok) {
+            File f = LittleFS.open(fileFor(s_rxSlot), "w");
+            ok = f && f.write(s_rxBuf, s_rxSize) == s_rxSize;
+            if (f) f.close();
+            if (ok) loadCustom(s_rxSlot);
+        }
+        if (s_rxBuf) heap_caps_free(s_rxBuf);
+        s_rxBuf = nullptr;
+        store::sendToPhone("BEAT_ACK", ok ? "done" : "-1");
+        return true;
+    }
+    if (topic == "SFX_RESET") {
+        int slot = slotOf(payload);
+        LittleFS.remove(fileFor(slot));
+        loadCustom(slot);
+        return true;
+    }
+    return false;
+}
 
 TaskHandle_t s_task = nullptr;
 volatile bool s_open = false;
@@ -121,6 +211,10 @@ void task(void*) {
         s_pending = -1;
         const int16_t* pcm = which == (int)Sound::Whip ? s_whip : s_gun;
         uint32_t len = which == (int)Sound::Whip ? s_whipLen : s_gunLen;
+        if (s_custom[which]) {   // eigener Sound vom Handy hat Vorrang
+            pcm = s_custom[which];
+            len = s_customLen[which];
+        }
         if (!pcm) continue;
         for (uint32_t pos = 0; pos < len && s_open && s_pending < 0; pos += BLK) {
             size_t n = min<uint32_t>(BLK, len - pos);
@@ -135,8 +229,15 @@ void task(void*) {
 
 }  // namespace
 
+void begin() { store::addHandler(handle); }
+
 bool open() {
     if (s_open) return true;
+    if (!s_customLoaded) {
+        loadCustom((int)Sound::Whip);
+        loadCustom((int)Sound::Gun);
+        s_customLoaded = true;
+    }
     if (!s_whip) makeWhip();
     if (!s_gun) makeGun();
     power::keepAwake(power::AWAKE_AUDIO, true);

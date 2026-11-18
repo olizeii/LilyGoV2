@@ -17,6 +17,7 @@
 #include "core/activity.h"
 #include "core/data_store.h"
 #include "core/settings.h"
+#include "core/sfx.h"
 #include "core/studio.h"
 #include "hal/display.h"
 #include "hal/haptics.h"
@@ -83,6 +84,7 @@ void setup() {
     mapscreen::begin();
     aiscreen::begin();
     studio::begin();
+    sfx::begin();
 
     BleManager& ble = BleManager::instance();
     ble.onMessage([](const String& msg) { store::handleMessage(msg); });

@@ -28,6 +28,9 @@ class BeatUploader(private val app: WatchBridgeApp) {
 
     private val _status = MutableStateFlow("")
     val status: StateFlow<String> = _status
+    /** Status der Sound-Gesten-Uploads (eigene Anzeige in der App) */
+    private val _sfxStatus = MutableStateFlow("")
+    val sfxStatus: StateFlow<String> = _sfxStatus
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
 
@@ -44,27 +47,40 @@ class BeatUploader(private val app: WatchBridgeApp) {
         if (ok) w.second.complete(Unit)
     }
 
-    fun upload(uri: Uri) {
+    /** Eigenen Sound für eine Geste zurücksetzen (Uhr nimmt wieder den eingebauten). */
+    fun resetSound(slot: String) {
+        if (app.link.state.value != BleLink.State.CONNECTED) { _sfxStatus.value = "Uhr nicht verbunden"; return }
+        app.bridge.send("SFX_RESET", slot)
+        _sfxStatus.value = "${slotName(slot)}: eingebauter Sound"
+    }
+
+    private fun slotName(slot: String) = if (slot == "gun") "Pistole" else "Peitsche"
+
+    /** @param slot null = Beat fürs Studio, sonst "whip"/"gun" für die Sound-Gesten */
+    fun upload(uri: Uri, slot: String? = null) {
         if (_busy.value) return
+        val out = if (slot == null) _status else _sfxStatus
         job = app.scope.launch {
             _busy.value = true
             try {
                 if (app.link.state.value != BleLink.State.CONNECTED) {
-                    _status.value = "Uhr nicht verbunden"
+                    out.value = "Uhr nicht verbunden"
                     return@launch
                 }
-                _status.value = "Wandle um …"
+                out.value = "Wandle um …"
                 val name = displayName(uri).substringBeforeLast('.').take(28).replace('|', ' ')
-                val pcm = decode(uri)
+                var pcm = decode(uri)
                 if (pcm.isEmpty()) {
-                    _status.value = "Datei konnte nicht gelesen werden"
+                    out.value = "Datei konnte nicht gelesen werden"
                     return@launch
                 }
+                if (slot != null) pcm = trimEffect(pcm)
                 val data = toUlaw(pcm)
-                send(name, data)
+                if (slot == null) send(name, data, "BEAT", listOf(name), out)
+                else send(slotName(slot) + ": „$name“", data, "SFX", listOf(slot), out)
             } catch (e: Exception) {
-                Log.w(TAG, "Beat-Upload", e)
-                _status.value = "Fehler: ${e.message}"
+                Log.w(TAG, "Upload", e)
+                out.value = "Fehler: ${e.message}"
             } finally {
                 ackWait = null
                 _busy.value = false
@@ -72,13 +88,27 @@ class BeatUploader(private val app: WatchBridgeApp) {
         }
     }
 
-    private suspend fun send(name: String, data: ByteArray) {
+    /** Soundeffekt: Stille am Anfang weg (sonst kommt der Knall zu spät), max. [MAX_SFX_SECONDS]. */
+    private fun trimEffect(pcm: FloatArray): FloatArray {
+        val peak = pcm.maxOfOrNull { abs(it) } ?: return pcm
+        val start = pcm.indexOfFirst { abs(it) > peak * 0.08f }.coerceAtLeast(0)
+        val end = min(pcm.size, start + MAX_SFX_SECONDS * RATE)
+        val out = pcm.copyOfRange(start, end)
+        // kurz ausblenden, damit es am Ende nicht knackt
+        val fade = min(out.size, RATE / 50)
+        for (k in 0 until fade) out[out.size - 1 - k] *= k.toFloat() / fade
+        return out
+    }
+
+    private suspend fun send(name: String, data: ByteArray, prefix: String, head: List<String>,
+                             out: MutableStateFlow<String>) {
+        val _status = out
         failed = false
         val bridge = app.bridge
         val secs = data.size / RATE
         // Ack schon vor dem Senden scharf schalten (die Uhr antwortet schnell)
         val d0 = CompletableDeferred<Unit>(); ackWait = "0" to d0
-        bridge.send("BEAT_BEGIN", name, data.size.toString())
+        bridge.send("${prefix}_BEGIN", *(head + data.size.toString()).toTypedArray())
         if (withTimeoutOrNull(8000) { d0.await() } == null) {
             _status.value = "Uhr antwortet nicht – Firmware aktuell?"
             return
@@ -92,7 +122,7 @@ class BeatUploader(private val app: WatchBridgeApp) {
             val needAck = nextChunk % WINDOW == 0
             var d: CompletableDeferred<Unit>? = null
             if (needAck) { d = CompletableDeferred(); ackWait = nextChunk.toString() to d }
-            bridge.send("BEAT", Base64.encodeToString(data, i, end - i, Base64.NO_WRAP))
+            bridge.send(prefix, Base64.encodeToString(data, i, end - i, Base64.NO_WRAP))
             chunk = nextChunk
             i = end
             _status.value = "Sende „$name“ … ${100L * i / total} %"
@@ -110,9 +140,10 @@ class BeatUploader(private val app: WatchBridgeApp) {
             }
         }
         val dEnd = CompletableDeferred<Unit>(); ackWait = "done" to dEnd
-        bridge.send("BEAT_END")
+        bridge.send("${prefix}_END")
         val ok = withTimeoutOrNull(20000) { dEnd.await() } != null && !failed
-        _status.value = if (ok) "„$name“ ist auf der Uhr (${secs / 60}:${"%02d".format(secs % 60)})" else "Speichern auf der Uhr fehlgeschlagen"
+        _status.value = if (ok && prefix == "SFX") "$name ist auf der Uhr"
+            else if (ok) "„$name“ ist auf der Uhr (${secs / 60}:${"%02d".format(secs % 60)})" else "Speichern auf der Uhr fehlgeschlagen"
     }
 
     private fun displayName(uri: Uri): String {
@@ -247,6 +278,7 @@ class BeatUploader(private val app: WatchBridgeApp) {
         private const val TAG = "BeatUploader"
         const val RATE = 16000
         const val MAX_SECONDS = 40
+        const val MAX_SFX_SECONDS = 3
         private const val RAW_CHUNK = 3000   // -> 4000 Zeichen Base64
         private const val WINDOW = 8         // wie auf der Uhr
     }
