@@ -11,6 +11,10 @@ namespace motion {
 bool begin();        // nach power::begin() (Wire läuft)
 bool isOk();
 
+// Schnelle Bewegungen (Gesten): ±8 g bei 200 Hz statt ±2 g/100 Hz. Danach wieder aus.
+void setGestureMode(bool on);
+bool readAccel(float& x, float& y, float& z);   // in g
+
 uint32_t stepCount(); // Schritte seit dem letzten resetSteps()
 void resetSteps();
 

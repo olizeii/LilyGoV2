@@ -27,6 +27,28 @@ bool begin() {
 
 bool isOk() { return s_ok; }
 
+static float s_countsPerG = 1024.0f;   // 12 Bit, ±2 g
+
+void setGestureMode(bool on) {
+    if (!s_ok) return;
+    if (on) {
+        s_bma.configAccelerometer(SensorBMA423::RANGE_8G, SensorBMA423::ODR_200HZ);
+        s_countsPerG = 256.0f;
+    } else {
+        s_bma.configAccelerometer(SensorBMA423::RANGE_2G, SensorBMA423::ODR_100HZ);
+        s_countsPerG = 1024.0f;
+    }
+}
+
+bool readAccel(float& x, float& y, float& z) {
+    int16_t ix, iy, iz;
+    if (!s_ok || !s_bma.getAccelerometer(ix, iy, iz)) return false;
+    x = ix / s_countsPerG;
+    y = iy / s_countsPerG;
+    z = iz / s_countsPerG;
+    return true;
+}
+
 uint32_t stepCount() { return s_ok ? s_bma.getPedometerCounter() : 0; }
 
 void resetSteps() {

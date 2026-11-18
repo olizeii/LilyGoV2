@@ -1,5 +1,6 @@
 #include "apps.h"
 
+#include "apps/gesture_app.h"
 #include "apps/hop_tower_app.h"
 #include "apps/ir_remote_app.h"
 #include "apps/media_app.h"
@@ -21,6 +22,7 @@ using theme::Tint;
 static HopTowerApp  s_hopTower;
 static TicTacToeApp s_ticTacToe;
 static RunnerApp    s_runner;
+static GestureApp   s_gestures;
 
 static UntisApp    s_untis;
 static MediaApp    s_spotify;
@@ -38,6 +40,7 @@ void registerAll() {
     ui::registerApp(0, 0, &s_hopTower);
     ui::registerApp(0, 1, &s_ticTacToe);
     ui::registerApp(0, 2, &s_runner);
+    ui::registerApp(0, 3, &s_gestures);
 
     // X=1  Watchfaces (Start-Spalte)
     watchfaces::registerColumn(ui::COL_WATCHFACES);
