@@ -16,12 +16,14 @@ namespace {
 constexpr float WHIP_G   = 3.0f;    // Mindest-Ruck (ohne Schwerkraft) für die Peitsche
 constexpr float GUN_G    = 2.2f;    // fürs Pistolen-Wippen reicht weniger
 constexpr uint32_t PAUSE = 450;     // ms bis zur nächsten Auslösung
-constexpr float SHAKE_ON  = 0.9f;   // Dauerfeuer: ab dieser Wackel-Stärke (g) wird geschossen ...
-constexpr float SHAKE_OFF = 0.5f;   // ... und darunter wieder Ruhe (Hysterese)
-constexpr uint32_t BURST_MS = 85;   // ~12 Schuss pro Sekunde
+// Dauerfeuer: Schwelle und Tempo kommen aus der Handy-App (sfx::burstThreshold/burstHz)
+constexpr float SWING_G  = 1.5f;    // Lichtschwert: Schwung ...
+constexpr float CLASH_G  = 4.5f;    // ... und harter Ruck = Aufprall
+constexpr uint32_t SWING_PAUSE = 320;
 
-const char* const NAMES[]  = {"Peitsche", "Pistole", "Auto", "Dauerfeuer"};
-const char* const EMOJIS[] = {"\xF0\x9F\xA4\xA0", "\xF0\x9F\x92\xA5", "\xE2\x9C\xA8", "\xF0\x9F\x94\xA5"};   // 🤠 💥 ✨ 🔥
+const char* const NAMES[]  = {"Peitsche", "Pistole", "Auto", "Dauerfeuer", "Lichtschwert"};
+const char* const EMOJIS[] = {"\xF0\x9F\xA4\xA0", "\xF0\x9F\x92\xA5", "\xE2\x9C\xA8", "\xF0\x9F\x94\xA5",
+                              "\xE2\x9A\xA1"};   // 🤠 💥 ✨ 🔥 ⚡
 
 }  // namespace
 
@@ -45,7 +47,12 @@ void GestureApp::create(lv_obj_t* tile) {
     lv_obj_add_flag(m_circle, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(m_circle, [](lv_event_t* e) {
         auto* a = static_cast<GestureApp*>(lv_event_get_user_data(e));
-        a->fire(a->m_mode == Gun || a->m_mode == Burst);
+        switch (a->m_mode) {
+            case Burst: a->fire(sfx::Sound::Burst, Tint::Orange, Burst); break;
+            case Saber: a->fire(sfx::Sound::SaberClash, Tint::Cyan, Saber); break;
+            case Gun:   a->fire(sfx::Sound::Gun, Tint::Orange, Gun); break;
+            default:    a->fire(sfx::Sound::Whip, Tint::Red, Whip); break;
+        }
     }, LV_EVENT_CLICKED, this);
 
     m_emoji = theme::label(m_circle, theme::textTitle(), "");
@@ -68,7 +75,7 @@ void GestureApp::create(lv_obj_t* tile) {
     for (uint8_t i = 0; i < MODES; i++) {
         lv_obj_t* b = lv_obj_create(row);
         lv_obj_remove_style_all(b);
-        lv_obj_set_size(b, 108, 34);
+        lv_obj_set_size(b, i < 3 ? 70 : 108, 34);
         lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
         lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
@@ -94,33 +101,47 @@ void GestureApp::onShow() {
     motion::setGestureMode(true);
     m_primed = false;
     if (!sfx::open()) ui::setText(m_hint, "Lautsprecher belegt");
+    else if (m_mode == Saber) saber(true);
     lv_timer_resume(m_timer);
     refresh();
 }
 
 void GestureApp::onHide() {
     lv_timer_pause(m_timer);
+    sfx::setHum(false);
     sfx::close();
     motion::setGestureMode(false);
 }
 
 void GestureApp::setMode(uint8_t m) {
-    m_mode = m % MODES;
+    m = m % MODES;
+    if (m == m_mode) return;
+    if (m_mode == Saber) saber(false);
+    m_mode = m;
     m_shaking = false;
     m_energy = 0;
+    if (m_mode == Saber) saber(true);
     settings::putU8("gestMode", m_mode);
     haptics::tap();
     refresh();
 }
 
-void GestureApp::fire(bool gun) {
+void GestureApp::saber(bool on) {
+    if (!sfx::isOpen()) return;
+    sfx::setMotion(0);
+    sfx::setHum(on);
+    sfx::play(on ? sfx::Sound::SaberOn : sfx::Sound::SaberOff);
+    haptics::tap();
+}
+
+void GestureApp::fire(sfx::Sound s, Tint t, uint8_t emoji) {
     m_lastFire = millis();
     m_flashUntil = m_lastFire + 180;
     m_count++;
-    sfx::play(gun ? sfx::Sound::Gun : sfx::Sound::Whip);
+    sfx::play(s);
     haptics::tap();
-    lv_obj_set_style_bg_color(m_circle, theme::tint(gun ? Tint::Orange : Tint::Red), 0);
-    ui::setText(m_emoji, gun ? EMOJIS[Gun] : EMOJIS[Whip]);
+    lv_obj_set_style_bg_color(m_circle, theme::tint(t), 0);
+    ui::setText(m_emoji, EMOJIS[emoji]);
 }
 
 void GestureApp::sample() {
@@ -148,27 +169,43 @@ void GestureApp::sample() {
 
     // Dauerfeuer: solange kräftig gewackelt wird, Schuss auf Schuss; still halten = Ruhe
     if (m_mode == Burst) {
+        const float on = sfx::burstThreshold();
         m_energy += 0.12f * (mag - m_energy);   // ~80 ms Glättung
-        if (!m_shaking && m_energy > SHAKE_ON) m_shaking = true;
-        if (m_shaking && m_energy < SHAKE_OFF) m_shaking = false;
-        if (m_shaking && millis() - m_lastFire >= BURST_MS) fire(true);
+        if (!m_shaking && m_energy > on) m_shaking = true;
+        if (m_shaking && m_energy < on * 0.55f) m_shaking = false;
+        if (m_shaking && millis() - m_lastFire >= 1000u / sfx::burstHz()) fire(sfx::Sound::Burst, Tint::Orange, Burst);
+        return;
+    }
+
+    // Lichtschwert: Summen folgt der Bewegung, Schwung = "Wuuusch", harter Ruck = Aufprall
+    if (m_mode == Saber) {
+        m_energy += 0.15f * (mag - m_energy);
+        sfx::setMotion(fminf(m_energy / 1.5f, 1.2f));
+        uint32_t since = millis() - m_lastFire;
+        if (mag > CLASH_G && since > 250) fire(sfx::Sound::SaberClash, Tint::Cyan, Saber);
+        else if (mag > SWING_G && since > SWING_PAUSE) {
+            fire(sfx::Sound::SaberSwing, Tint::Blue, Saber);
+            m_flashUntil = 0;   // Schwung nicht aufblitzen lassen, nur Klang
+            refresh();
+        }
         return;
     }
     if (millis() - m_lastFire < PAUSE) return;
 
     switch (m_mode) {
         case Whip:
-            if (mag > WHIP_G) fire(false);
+            if (mag > WHIP_G) fire(sfx::Sound::Whip, Tint::Red, Whip);
             break;
         case Gun:
-            if (mag > GUN_G) fire(true);
+            if (mag > GUN_G) fire(sfx::Sound::Gun, Tint::Orange, Gun);
             break;
         default: {
             // Auto: Pistole = Hand wippt nach oben -> Bewegung vor allem senkrecht zum Display (z),
             // Peitsche = Schlag in der Ebene des Arms (x/y) und meist heftiger
             if (mag < GUN_G) break;
             bool gun = fabsf(d[2]) > 0.65f * mag;
-            if (gun || mag > WHIP_G) fire(gun);
+            if (gun) fire(sfx::Sound::Gun, Tint::Orange, Gun);
+            else if (mag > WHIP_G) fire(sfx::Sound::Whip, Tint::Red, Whip);
             break;
         }
     }
@@ -185,6 +222,7 @@ void GestureApp::refresh() {
         ui::setText(m_hint, m_mode == Whip  ? "Hand wie eine Peitsche schlagen"
                           : m_mode == Gun   ? "Hand schnell nach oben wippen"
                           : m_mode == Burst ? "Schnell wackeln = Feuer, still = Ruhe"
+                          : m_mode == Saber ? "Schwingen = Wuusch, Ruck = Aufprall"
                                             : "Peitschen- oder Schuss-Bewegung");
     }
     for (uint8_t i = 0; i < MODES; i++) {

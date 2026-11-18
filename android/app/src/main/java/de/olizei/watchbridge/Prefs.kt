@@ -59,6 +59,15 @@ class Prefs(ctx: Context) {
         get() = sp.getString("audd_token", "") ?: ""
         set(v) = sp.edit { putString("audd_token", v) }
 
+    /** Sound-Gesten Dauerfeuer: Schuss pro Sekunde und Wackel-Schwelle (g) */
+    var burstHz: Int
+        get() = sp.getInt("burst_hz", 12)
+        set(v) = sp.edit { putInt("burst_hz", v) }
+
+    var burstThr: Float
+        get() = sp.getFloat("burst_thr", 0.9f)
+        set(v) = sp.edit { putFloat("burst_thr", v) }
+
     var spRefresh: String
         get() = sp.getString("sp_refresh", "") ?: ""
         set(v) = sp.edit { putString("sp_refresh", v) }

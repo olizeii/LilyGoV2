@@ -1,13 +1,16 @@
 #pragma once
 #include <Arduino.h>
 
+#include "core/sfx.h"
 #include "ui/app.h"
+#include "ui/theme.h"
 
 // =============================================================================
 //  Sound-Gesten – Peitschenhieb oder Pistolen-Wippen mit der Hand -> passender
 //  Sound aus dem Lautsprecher. Erkennung über den Beschleunigungssensor (BMA423).
 //  Modus: Peitsche / Pistole / Auto (unterscheidet an der Bewegungsrichtung) /
-//         Dauerfeuer (schnell wackeln = Salve, still halten = Ruhe).
+//         Dauerfeuer (schnell wackeln = Salve, still halten = Ruhe) /
+//         Lichtschwert (Summen, Schwung, Aufprall).
 //  Kreis antippen = Sound zum Ausprobieren. Läuft nur, solange die Kachel offen ist.
 // =============================================================================
 class GestureApp : public WatchApp {
@@ -18,10 +21,11 @@ public:
     void onHide() override;
 
 private:
-    enum Mode : uint8_t { Whip, Gun, Auto, Burst, MODES };
+    enum Mode : uint8_t { Whip, Gun, Auto, Burst, Saber, MODES };
 
     void sample();             // 100 Hz: Sensor lesen, Geste erkennen
-    void fire(bool gun);
+    void fire(sfx::Sound s, theme::Tint t, uint8_t emoji);
+    void saber(bool on);       // Lichtschwert zünden / einfahren
     void setMode(uint8_t m);
     void refresh();
 

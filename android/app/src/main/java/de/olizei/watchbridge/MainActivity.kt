@@ -58,6 +58,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -662,17 +663,32 @@ class MainActivity : ComponentActivity() {
         }
         Group(c) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(status.ifEmpty { "Eigene Sounds für Peitsche und Pistole (max. 3 s, Stille am Anfang wird abgeschnitten)" },
+                Text(status.ifEmpty { "Eigene Sounds (max. 3 s, Stille am Anfang wird abgeschnitten)" },
                     color = c.secondary, fontSize = 13.sp)
-                for ((key, label) in listOf("whip" to "Peitsche", "gun" to "Pistole")) {
+                for ((key, label) in listOf("whip" to "Peitsche", "gun" to "Pistole", "burst" to "Dauerfeuer")) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        RowIcon(Icons.Default.MusicNote, if (key == "gun") c.orange else c.red)
+                        RowIcon(Icons.Default.MusicNote, when (key) { "gun" -> c.orange; "burst" -> c.pink; else -> c.red })
                         Spacer(Modifier.width(12.dp))
                         Text(label, color = c.text, fontSize = 17.sp, modifier = Modifier.weight(1f))
                         TextButton({ app.beats.resetSound(key) }, enabled = !busy) { Text("Standard", color = c.secondary) }
                         TextButton({ slot = key; pick.launch(arrayOf("audio/*")) }, enabled = !busy) { Text("Sound wählen") }
                     }
                 }
+
+                // Dauerfeuer-Regler
+                var hz by remember { mutableStateOf(app.prefs.burstHz.toFloat()) }
+                var thr by remember { mutableStateOf(app.prefs.burstThr) }
+                Spacer(Modifier.height(8.dp))
+                Text("Dauerfeuer-Tempo: ${hz.toInt()} Schuss/s", color = c.text, fontSize = 15.sp)
+                Slider(hz, { hz = it }, valueRange = 4f..20f, steps = 15, onValueChangeFinished = {
+                    app.prefs.burstHz = hz.toInt()
+                    app.beats.sendGestureConfig(hz.toInt(), thr)
+                })
+                Text("Schwelle: ${"%.1f".format(thr)} g  (höher = stärker wackeln)", color = c.text, fontSize = 15.sp)
+                Slider(thr, { thr = Math.round(it * 10) / 10f }, valueRange = 0.3f..2.0f, onValueChangeFinished = {
+                    app.prefs.burstThr = thr
+                    app.beats.sendGestureConfig(hz.toInt(), thr)
+                })
             }
         }
     }

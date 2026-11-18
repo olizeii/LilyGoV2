@@ -54,7 +54,18 @@ class BeatUploader(private val app: WatchBridgeApp) {
         _sfxStatus.value = "${slotName(slot)}: eingebauter Sound"
     }
 
-    private fun slotName(slot: String) = if (slot == "gun") "Pistole" else "Peitsche"
+    private fun slotName(slot: String) = when (slot) {
+        "gun" -> "Pistole"
+        "burst" -> "Dauerfeuer"
+        else -> "Peitsche"
+    }
+
+    /** Dauerfeuer-Tempo (Schuss/s) und Schwelle (g) an die Uhr schicken. */
+    fun sendGestureConfig(hz: Int, thr: Float) {
+        if (app.link.state.value != BleLink.State.CONNECTED) { _sfxStatus.value = "Uhr nicht verbunden – Regler nicht übertragen"; return }
+        app.bridge.send("GEST_CFG", hz.toString(), Math.round(thr * 10).toString())
+        _sfxStatus.value = "Dauerfeuer: $hz Schuss/s, Schwelle ${"%.1f".format(thr)} g"
+    }
 
     /** @param slot null = Beat fürs Studio, sonst "whip"/"gun" für die Sound-Gesten */
     fun upload(uri: Uri, slot: String? = null) {
